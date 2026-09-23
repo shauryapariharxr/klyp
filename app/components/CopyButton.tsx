@@ -27,7 +27,7 @@ export default function CopyButton({
     <button
       type="button"
       onClick={copy}
-      className={`flex h-10 items-center justify-center rounded-full border border-zinc-300 px-5 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900 ${className}`}
+      className={`flex h-10 items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 ${className}`}
     >
       {copied ? "Copied ✓" : label}
     </button>

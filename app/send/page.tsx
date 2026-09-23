@@ -190,26 +190,26 @@ export default function SendPage() {
   if (stage === "done" && result) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
-        <div className="w-full max-w-md text-center">
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Share this PIN with the receiver</p>
-          <div className="mt-3 flex items-center justify-center gap-4">
+        <div className="glass-strong w-full max-w-md rounded-3xl p-8 text-center">
+          <p className="text-sm text-slate-400">Share this PIN with the receiver</p>
+          <div className="mt-4 flex items-center justify-center gap-3">
             <div
-              className="rounded-2xl border border-zinc-300 bg-white px-8 py-4 font-mono text-5xl font-bold tracking-[0.3em] dark:border-zinc-700 dark:bg-zinc-900"
+              className="rounded-2xl border border-white/15 bg-white/5 px-6 py-3 font-mono text-5xl font-bold tracking-[0.3em] accent-gradient"
               aria-label={`Your PIN is ${result.pin}`}
             >
               {result.pin}
             </div>
-            <CopyButton value={result.pin} label="Copy PIN" />
+            <CopyButton value={result.pin} label="Copy" />
           </div>
-          <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-4 text-sm text-slate-400">
             Expires in 30 minutes. The receiver enters this PIN at{" "}
-            <span className="font-mono">/receive</span>.
+            <span className="font-mono text-slate-300">/receive</span>.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <button
               type="button"
               onClick={reset}
-              className="flex h-11 items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              className="flex h-11 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-slate-950 shadow-[0_0_24px_rgba(165,180,252,0.35)] transition-shadow hover:shadow-[0_0_36px_rgba(165,180,252,0.55)]"
             >
               Send another
             </button>
@@ -223,11 +223,12 @@ export default function SendPage() {
     <div className="flex flex-1 flex-col items-center px-4 py-12">
       <div className="w-full max-w-xl">
         <h1 className="text-2xl font-semibold tracking-tight">Send files or text</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Files upload directly to encrypted storage. You&apos;ll get a 4-digit PIN to share.
+        <p className="mt-2 text-sm text-slate-400">
+          Files upload directly to storage. You&apos;ll get a 4-digit PIN to share.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+        <div className="glass mt-8 rounded-3xl p-6 sm:p-8">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -240,13 +241,13 @@ export default function SendPage() {
               addFiles(e.dataTransfer.files);
             }}
             onClick={() => inputRef.current?.click()}
-            className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
+            className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
               dragOver
-                ? "border-zinc-500 bg-zinc-100 dark:bg-zinc-900"
-                : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-600"
+                ? "border-cyan-300/70 bg-cyan-300/10 shadow-[0_0_36px_rgba(103,232,249,0.25)]"
+                : "border-white/15 hover:border-white/30 hover:bg-white/5"
             }`}
           >
-            <div className="text-3xl">📁</div>
+            <div className="text-3xl">🛰️</div>
             <p className="mt-3 text-sm font-medium">Drag & drop files here, or click to browse</p>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
               Up to {MAX_FILES} files · 50 MB each · 100 MB total
@@ -268,16 +269,16 @@ export default function SendPage() {
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+                  className="glass flex items-center justify-between rounded-xl px-4 py-3 text-sm"
                 >
                   <span className="min-w-0 truncate">
                     {item.file.name}{" "}
-                    <span className="text-zinc-500">({formatBytes(item.file.size)})</span>
+                    <span className="text-slate-500">({formatBytes(item.file.size)})</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => setItems((current) => current.filter((i) => i.id !== item.id))}
-                    className="ml-4 shrink-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                    className="ml-4 shrink-0 text-slate-400 transition-colors hover:text-red-300"
                     aria-label={`Remove ${item.file.name}`}
                   >
                     ✕
@@ -298,35 +299,36 @@ export default function SendPage() {
               maxLength={MAX_TEXT_LENGTH}
               rows={4}
               placeholder="Type or paste a message, code snippet, link…"
-              className="mt-2 w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-400"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 focus:bg-white/10"
             />
           </div>
 
           {error && (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
               {error}
             </p>
           )}
 
           {stage === "uploading" ? (
             <div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-zinc-900 transition-all dark:bg-zinc-100"
+                  className="h-full rounded-full bg-gradient-to-r from-violet-300 via-indigo-300 to-cyan-300 shadow-[0_0_16px_rgba(165,180,252,0.6)] transition-all"
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <p className="mt-2 text-center text-xs text-zinc-500">Uploading… {progress}%</p>
+              <p className="mt-2 text-center text-xs text-slate-400">Uploading… {progress}%</p>
             </div>
           ) : (
             <button
               type="submit"
-              className="flex h-12 w-full items-center justify-center rounded-full bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              className="flex h-12 w-full items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-950 shadow-[0_0_28px_rgba(165,180,252,0.35)] transition-shadow hover:shadow-[0_0_40px_rgba(165,180,252,0.55)] disabled:opacity-50"
             >
               Generate PIN
             </button>
           )}
         </form>
+        </div>
       </div>
     </div>
   );

@@ -48,9 +48,9 @@ export default function ReceivePage() {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
-      <div className="w-full max-w-sm text-center">
+      <div className="glass-strong w-full max-w-sm rounded-3xl p-8 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">Receive a transfer</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 text-sm text-slate-400">
           Enter the 4-digit PIN the sender shared with you.
         </p>
 
@@ -64,13 +64,13 @@ export default function ReceivePage() {
             onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
             placeholder="••••"
             aria-label="4-digit PIN"
-            className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-5 text-center font-mono text-3xl tracking-[0.5em] outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-400"
+            className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-5 text-center font-mono text-3xl tracking-[0.5em] text-slate-100 outline-none transition-colors focus:border-cyan-300/60 focus:bg-white/10"
           />
 
           {error && (
             <p
               role="alert"
-              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
             >
               {error}
             </p>
@@ -79,7 +79,7 @@ export default function ReceivePage() {
           <button
             type="submit"
             disabled={submitting}
-            className="flex h-12 w-full items-center justify-center rounded-full bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="flex h-12 w-full items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-950 shadow-[0_0_28px_rgba(165,180,252,0.35)] transition-shadow hover:shadow-[0_0_40px_rgba(165,180,252,0.55)] disabled:opacity-50"
           >
             {submitting ? "Checking…" : "View transfer"}
           </button>

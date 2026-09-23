@@ -46,28 +46,28 @@ export default function TransferViewClient({ view }: Props) {
 
   return (
     <div className="flex flex-1 flex-col items-center px-4 py-12">
-      <div className="w-full max-w-xl">
+      <div className="glass-strong w-full max-w-xl rounded-3xl p-6 sm:p-8">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight">Transfer received</h1>
-          <div className="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+          <div className="glass shrink-0 rounded-full px-4 py-1.5 text-sm text-slate-300">
             Expires in <Countdown expiresAt={view.expiresAt} />
           </div>
         </div>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-2 text-sm text-slate-400">
           Save what you need — this transfer is deleted after the countdown ends.
         </p>
 
         {hasText && (
           <section className="mt-8">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Text</h2>
+              <h2 className="text-sm font-medium text-slate-400">Text</h2>
               <CopyButton value={view.textContent ?? ""} label="Copy text" />
             </div>
-            <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
               {view.textContent}
             </pre>
             <div className="mt-2 text-right">
-              <span className="text-xs text-zinc-400">
+              <span className="text-xs text-slate-500">
                 {view.textContent?.length ?? 0} characters
               </span>
             </div>
@@ -76,25 +76,25 @@ export default function TransferViewClient({ view }: Props) {
 
         {hasFiles && (
           <section className="mt-8">
-            <h2 className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            <h2 className="text-sm font-medium text-slate-400">
               Files ({view.files.length})
             </h2>
             <ul className="mt-2 space-y-2">
               {view.files.map((file) => (
                 <li
                   key={file.id}
-                  className="flex items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+                  className="glass flex items-center justify-between gap-4 rounded-xl px-4 py-3 text-sm"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{file.fileName}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-slate-500">
                       {formatBytes(file.fileSize)} · {file.mimeType}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleDownload(file.id, file.fileName)}
-                    className="shrink-0 rounded-full bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                    className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_0_16px_rgba(165,180,252,0.3)] transition-shadow hover:shadow-[0_0_26px_rgba(165,180,252,0.5)]"
                   >
                     Download
                   </button>
@@ -102,7 +102,7 @@ export default function TransferViewClient({ view }: Props) {
               ))}
             </ul>
             {downloadError && (
-              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+              <p className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                 {downloadError}
               </p>
             )}
@@ -117,7 +117,7 @@ export default function TransferViewClient({ view }: Props) {
 
         <Link
           href="/"
-          className="mt-10 inline-flex h-11 items-center justify-center rounded-full border border-zinc-300 px-6 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="glass mt-10 inline-flex h-11 items-center justify-center rounded-full px-6 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
         >
           Back to home
         </Link>

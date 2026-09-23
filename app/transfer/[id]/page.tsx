@@ -36,8 +36,8 @@ export default async function TransferPage({
 
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
-        <div className="w-full max-w-md">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100 text-2xl dark:bg-zinc-900">
+        <div className="glass-strong w-full max-w-md rounded-3xl p-8">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-2xl">
             {expired ? "⏳" : stillUploading ? "📤" : serverError ? "⚠️" : "🚫"}
           </div>
           <h1 className="mt-6 text-2xl font-semibold tracking-tight">
@@ -51,7 +51,7 @@ export default async function TransferPage({
                     ? "Transfer not found"
                     : "Invalid access link"}
           </h1>
-          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-3 text-sm text-slate-400">
             {expired
               ? "Transfers are deleted automatically 30 minutes after they are created."
               : stillUploading
@@ -64,7 +64,7 @@ export default async function TransferPage({
           </p>
           <Link
             href="/receive"
-            className="mt-8 inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="mt-8 inline-flex h-11 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-slate-950 shadow-[0_0_24px_rgba(165,180,252,0.3)] transition-shadow hover:shadow-[0_0_36px_rgba(165,180,252,0.5)]"
           >
             Try another PIN
           </Link>
