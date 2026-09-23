@@ -12,6 +12,7 @@ import {
   recordPinFailure,
 } from "@/lib/rate-limit";
 import { getClientIp, jsonError } from "@/lib/http";
+import { scheduleExpirySweep } from "@/lib/cleanup";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,8 @@ const VERIFY_LIMIT = 30;
 const VERIFY_WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(req: Request) {
+  scheduleExpirySweep();
+
   const ip = getClientIp(req);
   if (!rateLimit(`verify:${ip}`, VERIFY_LIMIT, VERIFY_WINDOW_MS).allowed) {
     return jsonError("Too many attempts. Try again later.", 429);

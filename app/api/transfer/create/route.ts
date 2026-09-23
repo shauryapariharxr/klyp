@@ -8,6 +8,7 @@ import { MAX_TEXT_LENGTH, TRANSFER_TTL_MS } from "@/lib/limits";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp, jsonError } from "@/lib/http";
 import { isStorageConfigured } from "@/lib/storage";
+import { scheduleExpirySweep } from "@/lib/cleanup";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,8 @@ const CREATE_LIMIT = 10;
 const CREATE_WINDOW_MS = 60 * 60 * 1000;
 
 export async function POST(req: Request) {
+  scheduleExpirySweep();
+
   const ip = getClientIp(req);
   if (!rateLimit(`create:${ip}`, CREATE_LIMIT, CREATE_WINDOW_MS).allowed) {
     return jsonError("Too many transfers created. Try again later.", 429);

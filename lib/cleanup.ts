@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { eq, lt } from "drizzle-orm";
 import { getDb } from "./db";
 import { files, transfers } from "@/db/schema";
@@ -36,7 +37,7 @@ export async function cleanupExpiredTransfers(
         await deleteObjects(keys);
       } catch (error) {
         r2Failures += 1;
-        console.error(`[cleanup] R2 delete failed for transfer ${transfer.id}`, error);
+        console.error(`[cleanup] storage delete failed for transfer ${transfer.id}`, error);
         continue; // keep the row so the next run retries
       }
     }
@@ -46,4 +47,34 @@ export async function cleanupExpiredTransfers(
   }
 
   return { deletedTransfers, r2Failures };
+}
+
+let lastSweepAt = 0;
+const SWEEP_INTERVAL_MS = 60 * 1000;
+
+/**
+ * Opportunistic sweep: runs after the response is sent (via next/server
+ * `after`), at most once a minute per server instance, so expired
+ * transfers — and their stored files — are deleted within minutes of
+ * expiry whenever the site is being used. The daily Vercel cron remains
+ * as the backstop for quiet periods.
+ */
+export function scheduleExpirySweep(): void {
+  const now = Date.now();
+  if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
+  lastSweepAt = now;
+
+  after(async () => {
+    try {
+      const result = await cleanupExpiredTransfers(10);
+      if (result.deletedTransfers > 0 || result.r2Failures > 0) {
+        console.log(
+          `[cleanup] sweep deleted ${result.deletedTransfers} transfer(s) ` +
+            `(${result.r2Failures} storage failure(s) to retry)`,
+        );
+      }
+    } catch (error) {
+      console.error("[cleanup] sweep failed", error);
+    }
+  });
 }
