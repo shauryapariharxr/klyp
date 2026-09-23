@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { files, transfers } from "@/db/schema";
-import { getDownloadUrl } from "@/lib/r2";
+import { getDownloadUrl } from "@/lib/storage";
 import { tokensMatch } from "@/lib/token";
 import { isUuid, jsonError } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";

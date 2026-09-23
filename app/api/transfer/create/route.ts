@@ -7,7 +7,7 @@ import { generateToken } from "@/lib/token";
 import { MAX_TEXT_LENGTH, TRANSFER_TTL_MS } from "@/lib/limits";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp, jsonError } from "@/lib/http";
-import { isR2Configured } from "@/lib/r2";
+import { isStorageConfigured } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     return jsonError(parsed.error.issues[0]?.message ?? "Invalid request.", 400);
   }
 
-  if (parsed.data.hasFiles && !isR2Configured()) {
+  if (parsed.data.hasFiles && !isStorageConfigured()) {
     return jsonError("File uploads are unavailable: storage is not configured.", 503);
   }
 
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
               pinHash,
               textContent: parsed.data.text ?? null,
               accessToken,
-              // Files are uploaded directly to R2 afterwards; a text-only
+              // Files are uploaded directly to object storage afterwards; a text-only
               // transfer is complete the moment it is created.
               ready: !parsed.data.hasFiles,
               expiresAt: new Date(Date.now() + TRANSFER_TTL_MS),

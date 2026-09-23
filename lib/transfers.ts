@@ -1,7 +1,7 @@
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "./db";
 import { files, transfers, type Transfer, type TransferFile } from "@/db/schema";
-import { isR2Configured, getDownloadUrl } from "./r2";
+import { isStorageConfigured, getDownloadUrl } from "./storage";
 import { tokensMatch } from "./token";
 
 export type TransferFileView = {
@@ -65,7 +65,7 @@ export async function getTransferView(
     .from(files)
     .where(eq(files.transferId, transfer.id));
 
-  const withR2 = isR2Configured();
+  const withStorage = isStorageConfigured();
   const fileViews: TransferFileView[] = await Promise.all(
     rows.map(async (row) => ({
       id: row.id,
@@ -73,7 +73,7 @@ export async function getTransferView(
       fileSize: row.fileSize,
       mimeType: row.mimeType,
       downloadUrl:
-        withR2 && row.fileSize > 0 ? await getDownloadUrl(row.storageKey, row.fileName) : null,
+        withStorage && row.fileSize > 0 ? await getDownloadUrl(row.storageKey, row.fileName) : null,
     })),
   );
 

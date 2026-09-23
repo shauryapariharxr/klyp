@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { files, transfers } from "@/db/schema";
-import { objectExists } from "@/lib/r2";
+import { objectExists } from "@/lib/storage";
 import { tokensMatch } from "@/lib/token";
 import { STORAGE_PREFIX } from "@/lib/limits";
 import { isUuid, jsonError } from "@/lib/http";

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { transfers } from "@/db/schema";
-import { getUploadUrl, isR2Configured } from "@/lib/r2";
+import { getUploadUrl, isStorageConfigured } from "@/lib/storage";
 import { tokensMatch } from "@/lib/token";
 import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES, STORAGE_PREFIX } from "@/lib/limits";
 import { sanitizeFileName } from "@/lib/limits";
@@ -66,7 +66,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!tokensMatch(transfer.accessToken, parsed.data.accessToken)) {
     return jsonError("Invalid access token for this transfer.", 401);
   }
-  if (!isR2Configured()) {
+  if (!isStorageConfigured()) {
     return jsonError("File uploads are unavailable: storage is not configured.", 503);
   }
 

@@ -27,13 +27,33 @@ Copy `.env.example` to `.env.local`:
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | Neon Postgres connection string (use the **pooled** connection string) |
-| `R2_ACCOUNT_ID` | for files | Cloudflare account ID (endpoint host) |
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | for files | R2 S3-compatible API token |
-| `R2_BUCKET` | for files | Private bucket name |
+| `S3_ENDPOINT` | for files | S3-compatible endpoint URL (see below — Backblaze B2 is free) |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | for files | S3-compatible access key pair |
+| `S3_BUCKET` | for files | Private bucket name |
+| `S3_REGION` / `S3_FORCE_PATH_STYLE` | optional | Provider-specific S3 settings |
+| `R2_ACCOUNT_ID` (legacy) | for files | Cloudflare account ID — still works, endpoint derived from it |
 | `PIN_HASH_PEPPER` | recommended | Server-side secret mixed into PIN hashes |
 | `CRON_SECRET` | optional | Bearer secret for `/api/cleanup` |
 
-**R2 setup:** create a private bucket in the Cloudflare dashboard → R2, then an API token with Object Read & Write scoped to it. Keep the bucket private — downloads only happen through 10-minute signed URLs.
+**Storage setup — no Cloudflare subscription needed:** the app speaks plain S3, so any S3-compatible provider works. The easiest **completely free** option is [Backblaze B2](https://www.backblaze.com/sign-up/cloud-storage) — 10 GB storage + 1 GB/day egress free, **no credit card required**:
+
+1. Sign up, create a **private** bucket (e.g. `klyp`), note the region (e.g. `us-west-004`).
+2. App Keys → Add a New Application Key scoped to that bucket with Read & Write.
+3. Set `S3_ENDPOINT=https://s3.<region>.backblazeb2.com` plus the key ID/secret and bucket name.
+
+Keep the bucket private — downloads only happen through 10-minute signed URLs.
+
+Also works (free tiers vary): Filebase (5 GB, no card), iDrive e2 (10 GB), Scaleway (75 GB, card required), or Cloudflare R2 via the legacy `R2_*` variables. Text-only transfers need no storage at all.
+
+## Testing
+
+With the server running (`npm start` or `npm run dev`), run the API smoke test:
+
+```bash
+bash scripts/e2e-test.sh http://localhost:3000   # or your port
+```
+
+It creates a text transfer, verifies the PIN flow, then does a full file round-trip: presigned PUT directly to the bucket → complete → verify → signed download → byte-for-byte comparison.
 
 ## How it works
 
@@ -41,8 +61,8 @@ Copy `.env.example` to `.env.local`:
 
 1. Pick up to 10 files (50 MB each, 100 MB total) or paste text.
 2. `POST /api/transfer/create` stores the transfer, a peppered scrypt **hash** of the PIN (never the PIN), and an expiry 30 minutes out. Raw file bytes never pass through the server.
-3. Files upload **directly from the browser to R2** using presigned PUT URLs from `POST /api/transfer/:id/upload` — this avoids serverless request-body limits on large files.
-4. `POST /api/transfer/:id/complete` verifies every object exists in R2, saves file metadata, and marks the transfer ready.
+3. Files upload **directly from the browser to the bucket** using presigned PUT URLs from `POST /api/transfer/:id/upload` — this avoids serverless request-body limits on large files.
+4. `POST /api/transfer/:id/complete` verifies every object exists in the bucket, saves file metadata, and marks the transfer ready.
 
 ### Receiving
 

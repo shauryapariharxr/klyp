@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool } from "@neondatabase/serverless";
 import * as schema from "@/db/schema";
 
 let cached: ReturnType<typeof drizzle<typeof schema>> | null = null;
@@ -9,7 +9,11 @@ export function isDbConfigured(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
 
-/** Singleton Drizzle client over Neon's HTTP driver. Throws with a helpful message when unconfigured. */
+/**
+ * Singleton Drizzle client over Neon's WebSocket driver, which (unlike the
+ * plain HTTP driver) supports transactions — required by the PIN-collision
+ * retry logic and the complete-file metadata write.
+ */
 export function getDb() {
   if (cached) return cached;
 
@@ -20,6 +24,6 @@ export function getDb() {
     );
   }
 
-  cached = drizzle(neon(connectionString), { schema });
+  cached = drizzle(new Pool({ connectionString }), { schema });
   return cached;
 }

@@ -26,5 +26,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# vercel
+# vercelgit rm filename
 .vercel
+.freebuff

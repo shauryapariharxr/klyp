@@ -65,7 +65,7 @@ export default function SendPage() {
     return null;
   }
 
-  async function uploadFileToR2(
+  async function uploadFileToStorage(
     uploadUrl: string,
     file: File,
     contentType: string,
@@ -118,7 +118,7 @@ export default function SendPage() {
       }
       const created: CreateResult = await createRes.json();
 
-      // 2. Upload files directly to R2 with progress feedback.
+      // 2. Upload files directly to object storage with progress feedback.
       if (filesPending) {
         const planRes = await fetch(`/api/transfer/${created.transferId}/upload`, {
           method: "POST",
@@ -144,7 +144,7 @@ export default function SendPage() {
 
         for (const [index, planItem] of plan.uploadUrls.entries()) {
           const item = items[index];
-          await uploadFileToR2(planItem.uploadUrl, item.file, planItem.mimeType, (pct) => {
+          await uploadFileToStorage(planItem.uploadUrl, item.file, planItem.mimeType, (pct) => {
             const fileBytes = (item.file.size * pct) / 100;
             setProgress(Math.round(((completedBytes + fileBytes) / grandTotal) * 100));
           });

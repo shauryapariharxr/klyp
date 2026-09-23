@@ -1,7 +1,7 @@
 import { eq, lt } from "drizzle-orm";
 import { getDb } from "./db";
 import { files, transfers } from "@/db/schema";
-import { deleteObjects } from "./r2";
+import { deleteObjects } from "./storage";
 
 export type CleanupResult = {
   deletedTransfers: number;
