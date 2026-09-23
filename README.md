@@ -7,7 +7,7 @@ Anonymous, login-free file & text transfer. Send files or text, get a **4-digit 
 ## Stack
 
 - **Next.js 16** (App Router) + **TypeScript** + **Tailwind CSS 4**
-- **PostgreSQL** on [Neon](https://neon.tech) via **Drizzle ORM**
+- **PostgreSQL** on [Supabase](https://supabase.com) via **Drizzle ORM** (postgres-js driver)
 - **Cloudflare R2** for private file storage with short-lived signed URLs
 - Deployed on **Vercel** — no authentication anywhere
 
@@ -26,13 +26,13 @@ Copy `.env.example` to `.env.local`:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Neon Postgres connection string (use the **pooled** connection string) |
+| `DATABASE_URL` | yes | Supabase **transaction pooler** connection string (port 6543); any Postgres works |
 | `S3_ENDPOINT` | for files | S3-compatible endpoint URL (see below — Backblaze B2 is free) |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | for files | S3-compatible access key pair |
 | `S3_BUCKET` | for files | Private bucket name |
 | `S3_REGION` / `S3_FORCE_PATH_STYLE` | optional | Provider-specific S3 settings |
 | `R2_ACCOUNT_ID` (legacy) | for files | Cloudflare account ID — still works, endpoint derived from it |
-| `PIN_HASH_PEPPER` | recommended | Server-side secret mixed into PIN hashes |
+| `PIN_HASH_PEPPER` | yes (prod) | Server-side secret mixed into PIN hashes — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `CRON_SECRET` | optional | Bearer secret for `/api/cleanup` |
 
 **Storage setup — no Cloudflare subscription needed:** the app speaks plain S3, so any S3-compatible provider works. The easiest **completely free** option is [Backblaze B2](https://www.backblaze.com/sign-up/cloud-storage) — 10 GB storage + 1 GB/day egress free, **no credit card required**:
@@ -103,7 +103,7 @@ app/
   api/file/[id]/route.ts
   api/cleanup/route.ts
 lib/
-  db.ts        Drizzle client (Neon serverless driver)
+  db.ts        Drizzle client (postgres-js driver)
   r2.ts        R2 upload/download/delete helpers
   pin.ts       PIN generation + peppered scrypt hashing
   rate-limit.ts in-memory limiter + failed attempts

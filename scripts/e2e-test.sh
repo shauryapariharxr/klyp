@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end smoke test for klyp against live Neon + iDrive e2.
+# End-to-end smoke test for klyp against live Supabase + iDrive e2.
 # Usage: bash scripts/e2e-test.sh [BASE_URL]   (default http://localhost:3123)
 BASE="${1:-http://localhost:3123}"
 J="content-type: application/json"
