@@ -2,7 +2,8 @@ import { after } from "next/server";
 import { eq, lt } from "drizzle-orm";
 import { getDb } from "./db";
 import { files, transfers } from "@/db/schema";
-import { deleteObjects } from "./storage";
+import { deleteObjects, deleteObjectsByPrefix, isStorageConfigured } from "./storage";
+import { STORAGE_PREFIX } from "./limits";
 
 export type CleanupResult = {
   deletedTransfers: number;
@@ -39,6 +40,19 @@ export async function cleanupExpiredTransfers(
         r2Failures += 1;
         console.error(`[cleanup] storage delete failed for transfer ${transfer.id}`, error);
         continue; // keep the row so the next run retries
+      }
+    }
+
+    // Safety net: the files table only covers uploads that called "/complete",
+    // so an abandoned session would otherwise leave its bytes in the bucket
+    // forever. List-and-delete the transfer's whole prefix to catch orphans.
+    if (isStorageConfigured()) {
+      try {
+        await deleteObjectsByPrefix(`${STORAGE_PREFIX}/${transfer.id}/`);
+      } catch (error) {
+        r2Failures += 1;
+        console.error(`[cleanup] prefix delete failed for transfer ${transfer.id}`, error);
+        continue;
       }
     }
 

@@ -2,6 +2,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -127,4 +128,33 @@ export async function deleteObjects(keys: string[]): Promise<void> {
       }),
     );
   }
+}
+
+/**
+ * Delete every object under a prefix, e.g. all files of one transfer
+ * ("transfers/<id>/..."). Used by cleanup as a safety net: the files table
+ * only knows about uploads whose "/complete" call arrived, so bytes uploaded
+ * by an abandoned or failed session would otherwise be orphaned in the
+ * bucket forever. Listing the prefix catches those regardless of DB state.
+ */
+export async function deleteObjectsByPrefix(prefix: string): Promise<number> {
+  const s3 = getS3();
+  let deleted = 0;
+
+  for (;;) {
+    const listed = await s3.send(new ListObjectsV2Command({ Bucket: bucket(), Prefix: prefix }));
+    const objects = listed.Contents ?? [];
+    if (objects.length > 0) {
+      await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket(),
+          Delete: { Objects: objects.map((o) => ({ Key: o.Key! })) },
+        }),
+      );
+      deleted += objects.length;
+    }
+    if (!listed.IsTruncated) break;
+  }
+
+  return deleted;
 }
