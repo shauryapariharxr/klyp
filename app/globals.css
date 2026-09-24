@@ -303,6 +303,26 @@ body {
       inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
 
+  /* Same strength as .glass-strong but "smoked": a clear pane carrying a
+     little deep-black tint, so the starfield stays visible through the card
+     while the surface itself reads darker than the page behind it. Used by
+     the two hero cards (/send and /receive) that anchor each page. */
+  .glass-strong-tinted {
+    background:
+      linear-gradient(
+        155deg,
+        rgba(2, 6, 23, 0.38),
+        rgba(2, 6, 23, 0.18) 55%,
+        rgba(2, 6, 23, 0.3)
+      ),
+      rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(24px);
+    box-shadow:
+      0 16px 48px rgba(2, 6, 23, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+
   /* Display headings (font-display) + the solid accent for their second
      half — one flat colour, no gradient text. */
   .font-display {

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Montserrat } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import Logo from "./components/Logo";
+import GitHubButton from "./components/GitHubButton";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -71,24 +72,40 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 lyp
               </span>
             </Link>
-            <nav className="glass flex items-center gap-1 rounded-full p-1 text-sm">
-              <Link
-                href="/send"
-                className="rounded-full px-4 py-1.5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                Send
-              </Link>
-              <Link
-                href="/receive"
-                className="rounded-full px-4 py-1.5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                Receive
-              </Link>
-            </nav>
+            <div className="flex items-center gap-2">
+              {/* Two standalone buttons rather than one segmented pill — each
+                  one is its own target now. */}
+              <nav className="flex items-center gap-2 text-sm">
+                <Link
+                  href="/send"
+                  className="glass rounded-full px-3.5 py-1.5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white sm:px-4"
+                >
+                  Send
+                </Link>
+                <Link
+                  href="/receive"
+                  className="glass rounded-full px-3.5 py-1.5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white sm:px-4"
+                >
+                  Receive
+                </Link>
+              </nav>
+              <GitHubButton />
+            </div>
           </div>
         </header>
         <main className="flex flex-1 flex-col">{children}</main>
-        <footer className="glass border-x-0 border-b-0 py-4 text-center text-xs text-slate-400">
+        {/* Fully transparent footer — the starfield shows straight through. */}
+        <footer className="py-5 text-center text-xs text-slate-500">
+          Developed by{" "}
+          <a
+            href="https://github.com/shauryapariharxr"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-slate-300 transition-colors hover:text-white"
+          >
+            shauryapariharxr
+          </a>
+          <span className="mx-2 text-slate-600">·</span>
           No accounts. Transfers self-destruct after 30 minutes.
         </footer>
       </body>

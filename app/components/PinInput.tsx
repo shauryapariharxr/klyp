@@ -1,18 +1,23 @@
 "use client";
 
-import { useRef, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useRef, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from "react";
 
 const LENGTH = 4;
 
 /**
  * One frosted-glass treatment shared by all four slots, so the PIN field
- * matches the glass surfaces on the send page — no per-box colour tints.
+ * matches the glass surfaces on the rest of the site — no per-box tints.
+ * Hover wakes the pane the same way the drop zone does: brighter border,
+ * a touch more fill.
  */
-const BOX_STYLE = "border-white/20 bg-white/[0.08]";
+const BOX_STYLE =
+  "glass select-none border-white/20 bg-white/[0.08] text-slate-100 hover:border-white/40 hover:bg-white/[0.12]";
 
-const BOX_FOCUS = "focus:border-white/50 focus:bg-white/[0.14]";
-
-const BOX_TEXT = "text-slate-100";
+/** The box the next keystroke lands in — the field's own accent, echoed by
+ *  the caret the moment you start typing. Solid 1px cyan line, slight lift,
+ *  soft cyan floor-glow; deliberately not a rainbow halo. */
+const BOX_ACTIVE =
+  "border-cyan-300 bg-cyan-300/[0.06] text-white -translate-y-0.5 shadow-[0_6px_20px_-6px_rgba(2,6,23,0.8),0_0_0_1px_rgba(103,232,249,0.35)]";
 
 /** Read-only twin of PinInput, so the sender sees the same four boxes. */
 export function PinDisplay({ value }: { value: string }) {
@@ -31,7 +36,7 @@ export function PinDisplay({ value }: { value: string }) {
         <div
           key={index}
           aria-hidden="true"
-          className={`glass flex aspect-square w-full items-center justify-center rounded-2xl font-mono text-3xl font-bold ${BOX_STYLE} ${BOX_TEXT}`}
+          className={`flex aspect-square w-full items-center justify-center rounded-2xl font-mono text-3xl font-bold ${BOX_STYLE}`}
         >
           {digit.trim()}
         </div>
@@ -41,110 +46,95 @@ export function PinDisplay({ value }: { value: string }) {
 }
 
 type Props = {
-  /** Exactly LENGTH chars; a space means "this slot is empty". */
+  /** Up to LENGTH digits, padded with spaces so every slot has a character. */
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
 };
 
-export default function PinInput({ value, onChange, disabled, autoFocus }: Props) {
-  const inputs = useRef<Array<HTMLInputElement | null>>([]);
+/**
+ * Four glass boxes backed by a single transparent input stretched over them.
+ * Anchoring the field to one element means the boxes fill in as you type, so
+ * there is never a need to click (or re-click) an individual digit — one tap
+ * anywhere on the row is enough. Backspace, paste and select-all-for-overwrite
+ * all behave the way they would in any other text field.
+ */
+export default function PinInput({ value, onChange, disabled = false, autoFocus = false }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const slots = Array.from({ length: LENGTH }, (_, i) => {
-    const char = value[i] ?? "";
-    return /^\d$/.test(char) ? char : "";
-  });
+  const digits = value.replace(/\D/g, "").slice(0, LENGTH);
+  const slots = Array.from({ length: LENGTH }, (_, i) => digits[i] ?? "");
+  // Once the PIN is full, hold the highlight on the last box.
+  const activeIndex = Math.min(digits.length, LENGTH - 1);
 
-  const commit = (next: string[]) =>
-    onChange(next.map((char) => char || " ").join(""));
-
-  function focusSlot(index: number) {
-    const el = inputs.current[Math.max(0, Math.min(LENGTH - 1, index))];
-    el?.focus();
-    el?.select();
+  function emit(next: string) {
+    onChange(next.padEnd(LENGTH, " "));
   }
 
-  /** Digits typed into a slot; keeps positions so out-of-order entry works. */
-  function write(index: number, raw: string) {
-    const typed = raw.replace(/\D/g, "");
-    const next = [...slots];
-    if (!typed) {
-      next[index] = "";
-      commit(next);
-      return;
-    }
-    for (let i = 0; i < typed.length && index + i < LENGTH; i++) {
-      next[index + i] = typed[i];
-    }
-    commit(next);
-    focusSlot(index + typed.length - 1);
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    // Hard cap at four digits — extra keystrokes are ignored, so the field can
+    // never hold more (or less) than a full PIN. Typing over a full field still
+    // works because onFocus selects everything first.
+    emit(e.target.value.replace(/\D/g, "").slice(0, LENGTH));
   }
 
-  function handleKeyDown(index: number, e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Backspace") {
-      e.preventDefault();
-      const next = [...slots];
-      if (next[index]) {
-        next[index] = "";
-      } else if (index > 0) {
-        next[index - 1] = "";
-        commit(next);
-        focusSlot(index - 1);
-        return;
-      }
-      commit(next);
-      return;
-    }
-    if (e.key === "Delete") {
-      e.preventDefault();
-      const next = [...slots];
-      next[index] = "";
-      commit(next);
-      return;
-    }
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      focusSlot(index - 1);
-    }
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      focusSlot(index + 1);
-    }
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    // Backspace is the browser's job now that the whole PIN lives in one field;
+    // only when the field is already empty do we swallow it so the page cannot
+    // navigate back.
+    if (e.key === "Backspace" && digits.length === 0) e.preventDefault();
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
   }
 
   function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, LENGTH);
     if (!pasted) return;
     e.preventDefault();
-    const next = Array.from({ length: LENGTH }, (_, i) => pasted[i] ?? "");
-    commit(next);
-    focusSlot(pasted.length - 1);
+    emit(pasted);
   }
 
   return (
-    <div className="grid grid-cols-4 gap-3">
-      {slots.map((digit, index) => (
-        <input
-          key={index}
-          ref={(el) => {
-            inputs.current[index] = el;
-          }}
-          type="text"
-          inputMode="numeric"
-          autoComplete={index === 0 ? "one-time-code" : "off"}
-          maxLength={1}
-          disabled={disabled}
-          autoFocus={autoFocus && index === 0}
-          value={digit}
-          aria-label={`PIN digit ${index + 1} of ${LENGTH}`}
-          onChange={(e) => write(index, e.target.value)}
-          onKeyDown={(e) => handleKeyDown(index, e)}
-          onPaste={handlePaste}
-          onFocus={(e) => e.currentTarget.select()}
-          className={`glass aspect-square w-full min-w-0 rounded-2xl text-center font-mono text-3xl font-bold outline-none transition-colors disabled:opacity-60 ${BOX_STYLE} ${BOX_FOCUS} ${BOX_TEXT}`}
-        />
-      ))}
+    <div
+      className="relative"
+      onClick={() => {
+        if (!disabled) inputRef.current?.focus();
+      }}
+    >
+      <div aria-hidden="true" className="grid grid-cols-4 gap-3">
+        {slots.map((digit, index) => (
+          <div
+            key={index}
+            className={`flex aspect-square w-full min-w-0 items-center justify-center rounded-2xl font-mono text-3xl font-bold transition-all duration-200 ${
+              index === activeIndex && !disabled ? BOX_ACTIVE : BOX_STYLE
+            }`}
+          >
+            {digit}
+          </div>
+        ))}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="one-time-code"
+        enterKeyHint="go"
+        spellCheck={false}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        value={digits}
+        aria-label="4-digit PIN"
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onFocus={(e) => {
+          // Already full? Select it so the next keystroke starts the PIN over.
+          if (digits.length >= LENGTH) e.currentTarget.select();
+        }}
+        className="absolute inset-0 h-full w-full cursor-pointer rounded-2xl bg-transparent text-base text-transparent caret-transparent outline-none disabled:cursor-not-allowed"
+      />
     </div>
   );
 }

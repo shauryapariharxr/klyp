@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     return jsonError(
       "Too many wrong PINs. Wait a few minutes before trying again.",
       429,
-      { retryAfterSeconds: Math.ceil(PIN_FAILURE_WINDOW_MS / 60) },
+      { retryAfterSeconds: Math.ceil(PIN_FAILURE_WINDOW_MS / 1000) },
     );
   }
 

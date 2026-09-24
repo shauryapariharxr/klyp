@@ -55,11 +55,11 @@ export default function ReceivePage() {
           Enter the 4-digit PIN. <span className="accent-text">Open the transfer.</span>
         </h1>
         <p className="mx-auto mt-4 max-w-sm text-center text-sm text-slate-400">
-          The sender handed you four digits. Type them in and the files land here — until the
-          30-minute clock runs out.
+          The sender handed you four digits. Type them straight in — the boxes fill themselves as
+          you go, and anything you paste lands in all four at once.
         </p>
 
-        <div className="glass-strong mt-10 rounded-3xl p-6 sm:p-8">
+        <div className="glass-strong-tinted mt-10 rounded-3xl p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             <PinInput value={pin} onChange={setPin} disabled={submitting} autoFocus />
 
@@ -82,7 +82,7 @@ export default function ReceivePage() {
           </form>
 
           <p className="mt-5 text-center text-xs text-slate-500">
-            Paste the whole PIN at once — it fills every box for you.
+            Just start typing — no need to click each box. Backspace removes the last digit.
           </p>
         </div>
       </div>

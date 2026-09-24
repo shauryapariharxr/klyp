@@ -191,31 +191,28 @@ export default function SendPage() {
   if (stage === "done" && result) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
-        <div className="glass-strong w-full max-w-md rounded-3xl p-8 text-center">
-          <h1 className="font-display text-2xl font-bold tracking-tight">
-            Your PIN is <span className="accent-text">ready to share.</span>
+        <div className="w-full max-w-md">
+          <h1 className="font-display text-center text-3xl font-extrabold tracking-tight sm:text-4xl">
+            Your PIN is ready.
+            <br />
+            <span className="accent-text">Gone in 30 minutes.</span>
           </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Hand these four digits to the receiver.
+          <p className="mx-auto mt-4 max-w-sm text-center text-sm text-slate-400">
+            Hand these four digits to the receiver. They type them in at{" "}
+            <span className="font-mono text-slate-300">/receive</span> and the files land with them.
           </p>
 
-          <div className="mt-6">
+          <div className="glass-strong-tinted mt-10 rounded-3xl p-6 sm:p-8">
             <PinDisplay value={result.pin} />
-          </div>
 
-          <div className="mt-4 flex justify-center">
-            <CopyButton value={result.pin} label="Copy PIN" />
-          </div>
+            <div className="mt-5 flex justify-center">
+              <CopyButton value={result.pin} label="Copy PIN" />
+            </div>
 
-          <p className="mt-6 text-sm text-slate-400">
-            Expires in 30 minutes. The receiver types it in at{" "}
-            <span className="font-mono text-slate-300">/receive</span>.
-          </p>
-          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <button
               type="button"
               onClick={reset}
-              className="flex h-11 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-slate-950 shadow-[0_0_24px_rgba(165,180,252,0.35)] transition-shadow hover:shadow-[0_0_36px_rgba(165,180,252,0.55)]"
+              className="mt-6 flex h-12 w-full items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-950 shadow-[0_0_28px_rgba(165,180,252,0.35)] transition-shadow hover:shadow-[0_0_40px_rgba(165,180,252,0.55)]"
             >
               Send another
             </button>
@@ -226,18 +223,21 @@ export default function SendPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center px-4 py-12">
-      <div className="w-full max-w-xl">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-          Send files or text. <span className="accent-text">Get a PIN to share.</span>
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
+      <div className="w-full max-w-md">
+        {/* Same centered heading-over-glass-card format as /receive. */}
+        <h1 className="font-display text-center text-3xl font-extrabold tracking-tight sm:text-4xl">
+          Send files or text.
+          <br />
+          <span className="accent-text">Get a PIN to share.</span>
         </h1>
-        <p className="mt-4 max-w-md text-sm text-slate-400">
+        <p className="mx-auto mt-4 max-w-sm text-center text-sm text-slate-400">
           Drop files or paste text. It goes straight to storage and you get four digits to hand
           over — nothing sticks around afterwards.
         </p>
 
-        <div className="glass-strong mt-10 rounded-3xl p-6 sm:p-8">
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="glass-strong-tinted mt-10 rounded-3xl p-6 sm:p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -250,7 +250,7 @@ export default function SendPage() {
               addFiles(e.dataTransfer.files);
             }}
             onClick={() => inputRef.current?.click()}
-            className={`glass cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
+            className={`glass cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition-all sm:p-10 ${
               dragOver
                 ? "border-cyan-300/70 bg-cyan-300/10 shadow-[0_0_36px_rgba(103,232,249,0.25)]"
                 : "border-white/20 hover:border-white/40 hover:bg-white/[0.09]"
@@ -308,7 +308,7 @@ export default function SendPage() {
               maxLength={MAX_TEXT_LENGTH}
               rows={4}
               placeholder="Type or paste a message, code snippet, link…"
-              className="glass mt-2 w-full rounded-2xl border-white/15 bg-white/[0.06] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 focus:bg-white/10"
+              className="glass mt-2 w-full rounded-2xl border-white/20 bg-white/[0.06] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 hover:border-white/40 focus:border-white/40 focus:bg-white/10"
             />
           </div>
 
