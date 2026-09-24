@@ -40,7 +40,7 @@ export default async function TransferPage({
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-2xl">
             {expired ? "⏳" : stillUploading ? "📤" : serverError ? "⚠️" : "🚫"}
           </div>
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight">
+          <h1 className="font-display mt-6 text-2xl font-bold tracking-tight">
             {expired
               ? "This transfer has expired"
               : stillUploading

@@ -7,7 +7,7 @@ export default function ExpiredPage() {
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-2xl">
           ⏳
         </div>
-        <h1 className="mt-6 text-2xl font-semibold tracking-tight">
+        <h1 className="font-display mt-6 text-2xl font-bold tracking-tight">
           This transfer has expired
         </h1>
         <p className="mt-3 text-sm text-slate-400">

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { formatBytes } from "@/lib/format";
 import CopyButton from "@/app/components/CopyButton";
+import { PinDisplay } from "@/app/components/PinInput";
 
 const MAX_FILES = 10;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -191,18 +192,23 @@ export default function SendPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
         <div className="glass-strong w-full max-w-md rounded-3xl p-8 text-center">
-          <p className="text-sm text-slate-400">Share this PIN with the receiver</p>
-          <div className="mt-4 flex items-center justify-center gap-3">
-            <div
-              className="rounded-2xl border border-white/15 bg-white/5 px-6 py-3 font-mono text-5xl font-bold tracking-[0.3em] accent-gradient"
-              aria-label={`Your PIN is ${result.pin}`}
-            >
-              {result.pin}
-            </div>
-            <CopyButton value={result.pin} label="Copy" />
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            Your PIN is <span className="accent-text">ready to share.</span>
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Hand these four digits to the receiver.
+          </p>
+
+          <div className="mt-6">
+            <PinDisplay value={result.pin} />
           </div>
-          <p className="mt-4 text-sm text-slate-400">
-            Expires in 30 minutes. The receiver enters this PIN at{" "}
+
+          <div className="mt-4 flex justify-center">
+            <CopyButton value={result.pin} label="Copy PIN" />
+          </div>
+
+          <p className="mt-6 text-sm text-slate-400">
+            Expires in 30 minutes. The receiver types it in at{" "}
             <span className="font-mono text-slate-300">/receive</span>.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -222,12 +228,15 @@ export default function SendPage() {
   return (
     <div className="flex flex-1 flex-col items-center px-4 py-12">
       <div className="w-full max-w-xl">
-        <h1 className="text-2xl font-semibold tracking-tight">Send files or text</h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Files upload directly to storage. You&apos;ll get a 4-digit PIN to share.
+        <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
+          Send files or text. <span className="accent-text">Get a PIN to share.</span>
+        </h1>
+        <p className="mt-4 max-w-md text-sm text-slate-400">
+          Drop files or paste text. It goes straight to storage and you get four digits to hand
+          over — nothing sticks around afterwards.
         </p>
 
-        <div className="glass mt-8 rounded-3xl p-6 sm:p-8">
+        <div className="glass-strong mt-10 rounded-3xl p-6 sm:p-8">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div
             onDragOver={(e) => {
@@ -241,15 +250,15 @@ export default function SendPage() {
               addFiles(e.dataTransfer.files);
             }}
             onClick={() => inputRef.current?.click()}
-            className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
+            className={`glass cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
               dragOver
                 ? "border-cyan-300/70 bg-cyan-300/10 shadow-[0_0_36px_rgba(103,232,249,0.25)]"
-                : "border-white/15 hover:border-white/30 hover:bg-white/5"
+                : "border-white/20 hover:border-white/40 hover:bg-white/[0.09]"
             }`}
           >
             <div className="text-3xl">🛰️</div>
             <p className="mt-3 text-sm font-medium">Drag & drop files here, or click to browse</p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="mt-1 text-xs text-slate-500">
               Up to {MAX_FILES} files · 50 MB each · 100 MB total
             </p>
             <input
@@ -290,7 +299,7 @@ export default function SendPage() {
 
           <div>
             <label htmlFor="text" className="text-sm font-medium">
-              Or paste text <span className="text-zinc-400">(optional)</span>
+              Or paste text <span className="text-slate-400">(optional)</span>
             </label>
             <textarea
               id="text"
@@ -299,7 +308,7 @@ export default function SendPage() {
               maxLength={MAX_TEXT_LENGTH}
               rows={4}
               placeholder="Type or paste a message, code snippet, link…"
-              className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 focus:bg-white/10"
+              className="glass mt-2 w-full rounded-2xl border-white/15 bg-white/[0.06] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 focus:bg-white/10"
             />
           </div>
 

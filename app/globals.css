@@ -11,6 +11,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-montserrat);
 }
 
 body {
@@ -21,6 +22,12 @@ body {
 
 @layer components {
   /* ---------- Starfield ---------- */
+  /* Three parallax layers of pure-white pixels, painted entirely with
+     box-shadow and drifting left at different speeds (faster = nearer).
+     No gradients, no glow orbs — just crisp stars on near-black, matching
+     the starswap backdrop. Each layer repeats its own field one loop to the
+     right via ::after so the sky tiles seamlessly instead of emptying out
+     at the edge. */
 
   @keyframes animStar {
     from {
@@ -31,47 +38,247 @@ body {
     }
   }
 
-  @keyframes twinkle {
-    from {
-      opacity: 0.45;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
   .star-layer {
     position: absolute;
     top: 0;
     left: 0;
-    border-radius: 9999px;
-    will-change: transform;
+    background: transparent;
     animation: animStar linear infinite;
+    will-change: transform;
+  }
+
+  /* Second copy of the same star field, offset exactly one loop to the
+     right, so the drift never exposes a gap. */
+  .star-layer::after {
+    content: " ";
+    position: absolute;
+    top: 0;
+    left: 2000px;
+    width: inherit;
+    height: inherit;
+    background: transparent;
+    box-shadow: inherit;
   }
 
   .star-layer-1 {
-    animation-duration: 180s;
+    width: 1px;
+    height: 1px;
+    animation-duration: 100s;
+    box-shadow:
+      158px 1872px #fff,
+      302px 956px #fff,
+      1467px 763px #fff,
+      1338px 233px #fff,
+      538px 544px #fff,
+      1578px 1959px #fff,
+      1002px 1996px #fff,
+      856px 2px #fff,
+      1628px 1849px #fff,
+      1354px 669px #fff,
+      1957px 102px #fff,
+      1890px 1535px #fff,
+      1033px 1769px #fff,
+      1100px 1742px #fff,
+      101px 891px #fff,
+      1799px 652px #fff,
+      1707px 255px #fff,
+      1147px 1951px #fff,
+      25px 63px #fff,
+      1214px 1113px #fff,
+      1996px 684px #fff,
+      164px 699px #fff,
+      480px 13px #fff,
+      933px 790px #fff,
+      1311px 113px #fff,
+      1828px 1186px #fff,
+      158px 192px #fff,
+      262px 497px #fff,
+      1819px 322px #fff,
+      849px 1789px #fff,
+      1726px 598px #fff,
+      1989px 1904px #fff,
+      416px 189px #fff,
+      760px 1191px #fff,
+      186px 228px #fff,
+      1079px 98px #fff,
+      1362px 1813px #fff,
+      1683px 1241px #fff,
+      1144px 1720px #fff,
+      75px 1014px #fff,
+      319px 1380px #fff,
+      1620px 1023px #fff,
+      642px 1330px #fff,
+      304px 1540px #fff,
+      1065px 1983px #fff,
+      456px 1652px #fff,
+      1118px 1811px #fff,
+      202px 969px #fff,
+      376px 20px #fff,
+      370px 852px #fff,
+      1607px 925px #fff,
+      759px 350px #fff,
+      743px 641px #fff,
+      1144px 1932px #fff,
+      197px 525px #fff,
+      56px 1346px #fff,
+      153px 701px #fff,
+      1505px 679px #fff,
+      451px 1678px #fff,
+      1958px 1279px #fff,
+      1104px 1712px #fff,
+      279px 1146px #fff,
+      1797px 1487px #fff,
+      375px 1218px #fff,
+      1011px 969px #fff,
+      231px 1339px #fff,
+      80px 252px #fff,
+      701px 594px #fff,
+      629px 1902px #fff,
+      1151px 1176px #fff,
+      691px 716px #fff,
+      799px 811px #fff,
+      1679px 1065px #fff,
+      1590px 1219px #fff,
+      1722px 1206px #fff,
+      724px 1205px #fff,
+      1297px 891px #fff,
+      1808px 1437px #fff,
+      1340px 365px #fff,
+      1408px 373px #fff,
+      1391px 1837px #fff,
+      721px 1727px #fff,
+      111px 1062px #fff,
+      768px 289px #fff,
+      1901px 1609px #fff,
+      370px 1202px #fff,
+      1148px 1044px #fff,
+      148px 1603px #fff,
+      842px 302px #fff,
+      1085px 1044px #fff,
+      1826px 1618px #fff,
+      886px 1923px #fff,
+      264px 1425px #fff,
+      107px 129px #fff,
+      1271px 49px #fff,
+      1950px 1016px #fff,
+      1514px 255px #fff,
+      1995px 561px #fff,
+      872px 1101px #fff,
+      1195px 595px #fff,
+      456px 880px #fff,
+      829px 1792px #fff,
+      1916px 73px #fff,
+      1668px 1721px #fff,
+      1569px 943px #fff,
+      235px 242px #fff,
+      1534px 1090px #fff,
+      1277px 1954px #fff,
+      236px 864px #fff,
+      1034px 1520px #fff,
+      763px 281px #fff,
+      3px 718px #fff,
+      1454px 544px #fff,
+      1112px 1735px #fff,
+      1813px 1771px #fff,
+      246px 1757px #fff,
+      1172px 1828px #fff,
+      576px 928px #fff,
+      1711px 533px #fff,
+      580px 1120px #fff,
+      1111px 686px #fff,
+      1994px 1826px #fff,
+      541px 408px #fff,
+      357px 72px #fff,
+      695px 682px #fff,
+      781px 48px #fff,
+      1000px 193px #fff,
+      333px 747px #fff,
+      520px 1969px #fff,
+      295px 993px #fff,
+      1331px 1551px #fff,
+      965px 1308px #fff,
+      629px 1556px #fff,
+      574px 1506px #fff,
+      1671px 798px #fff,
+      1307px 382px #fff,
+      1539px 1850px #fff,
+      1628px 1392px #fff,
+      726px 435px #fff,
+      1677px 173px #fff;
   }
 
   .star-layer-2 {
-    animation-name: animStar, twinkle;
-    animation-timing-function: linear, ease-in-out;
-    animation-iteration-count: infinite, infinite;
-    animation-direction: normal, alternate;
-    animation-duration: 120s, 5s;
+    width: 2px;
+    height: 2px;
+    animation-duration: 150s;
+    box-shadow:
+      1356px 484px #fff,
+      1032px 764px #fff,
+      703px 321px #fff,
+      1880px 159px #fff,
+      71px 1240px #fff,
+      286px 702px #fff,
+      1673px 1527px #fff,
+      1219px 1992px #fff,
+      1235px 1185px #fff,
+      1962px 169px #fff,
+      59px 1372px #fff,
+      339px 1651px #fff,
+      1706px 1108px #fff,
+      26px 698px #fff,
+      33px 1667px #fff,
+      1206px 253px #fff,
+      544px 1890px #fff,
+      1863px 1909px #fff,
+      337px 1842px #fff,
+      1988px 1319px #fff,
+      501px 274px #fff,
+      1170px 986px #fff,
+      1329px 204px #fff,
+      679px 1871px #fff,
+      1825px 592px #fff,
+      1766px 1300px #fff,
+      1367px 423px #fff,
+      1221px 1907px #fff,
+      688px 1350px #fff,
+      247px 618px #fff,
+      217px 6px #fff,
+      1373px 461px #fff,
+      78px 1806px #fff,
+      1013px 394px #fff,
+      270px 1684px #fff,
+      1838px 1905px #fff,
+      1209px 577px #fff,
+      1877px 1822px #fff,
+      201px 1816px #fff,
+      1773px 398px #fff;
   }
 
   .star-layer-3 {
-    animation-duration: 75s;
-  }
-
-  /* ---------- Nebula glows ---------- */
-
-  .nebula {
-    position: absolute;
-    border-radius: 9999px;
-    filter: blur(110px);
-    pointer-events: none;
+    width: 3px;
+    height: 3px;
+    animation-duration: 200s;
+    box-shadow:
+      1820px 1285px #fff,
+      262px 1726px #fff,
+      430px 1216px #fff,
+      1687px 1751px #fff,
+      1066px 197px #fff,
+      1247px 791px #fff,
+      133px 1471px #fff,
+      754px 148px #fff,
+      1456px 1963px #fff,
+      91px 788px #fff,
+      1687px 651px #fff,
+      1127px 599px #fff,
+      1628px 234px #fff,
+      1147px 839px #fff,
+      936px 1108px #fff,
+      1542px 181px #fff,
+      1619px 1468px #fff,
+      556px 1931px #fff,
+      1614px 1798px #fff,
+      619px 483px #fff;
   }
 
   /* ---------- Glassmorphism ---------- */
@@ -79,8 +286,9 @@ body {
   .glass {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    /* Only the unprefixed property: Lightning CSS re-adds vendor prefixes
+       itself, and emitting both made it drop the standard one. */
     backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
     box-shadow:
       0 8px 32px rgba(2, 6, 23, 0.35),
       inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -90,16 +298,18 @@ body {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.16);
     backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
     box-shadow:
       0 16px 48px rgba(2, 6, 23, 0.5),
       inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
 
-  .accent-gradient {
-    background: linear-gradient(100deg, #c4b5fd 0%, #a5b4fc 45%, #67e8f9 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+  /* Display headings (font-display) + the solid accent for their second
+     half — one flat colour, no gradient text. */
+  .font-display {
+    font-family: var(--font-display), var(--font-geist-sans), sans-serif;
+  }
+
+  .accent-text {
+    color: #67e8f9;
   }
 }

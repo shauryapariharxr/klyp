@@ -48,7 +48,7 @@ export default function TransferViewClient({ view }: Props) {
     <div className="flex flex-1 flex-col items-center px-4 py-12">
       <div className="glass-strong w-full max-w-xl rounded-3xl p-6 sm:p-8">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight">Transfer received</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight">Transfer received</h1>
           <div className="glass shrink-0 rounded-full px-4 py-1.5 text-sm text-slate-300">
             Expires in <Countdown expiresAt={view.expiresAt} />
           </div>
