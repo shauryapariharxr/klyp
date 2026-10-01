@@ -6,8 +6,8 @@ import CopyButton from "@/app/components/CopyButton";
 import { PinDisplay } from "@/app/components/PinInput";
 
 const MAX_FILES = 10;
-const MAX_FILE_BYTES = 50 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 10_000;
 
 type SendFile = { file: File; id: string };
@@ -59,10 +59,10 @@ export default function SendPage() {
     if (items.length > MAX_FILES) return `You can attach up to ${MAX_FILES} files.`;
     for (const item of items) {
       if (item.file.size > MAX_FILE_BYTES) {
-        return `"${item.file.name}" is larger than 50 MB.`;
+        return `"${item.file.name}" is larger than 25 MB.`;
       }
     }
-    if (totalSize > MAX_TOTAL_BYTES) return "Total size exceeds 100 MB.";
+    if (totalSize > MAX_TOTAL_BYTES) return "Total size exceeds 50 MB.";
     return null;
   }
 
@@ -195,7 +195,7 @@ export default function SendPage() {
           <h1 className="font-display text-center text-3xl font-extrabold tracking-tight sm:text-4xl">
             Your PIN is ready.
             <br />
-            <span className="accent-text">Gone in 30 minutes.</span>
+            <span className="accent-text">Gone in 15 minutes.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-sm text-center text-sm text-slate-400">
             Hand these four digits to the receiver. They type them in at{" "}
@@ -259,7 +259,7 @@ export default function SendPage() {
             <div className="text-3xl">🛰️</div>
             <p className="mt-3 text-sm font-medium">Drag & drop files here, or click to browse</p>
             <p className="mt-1 text-xs text-slate-500">
-              Up to {MAX_FILES} files · 50 MB each · 100 MB total
+              Up to {MAX_FILES} files · 25 MB each · 50 MB total
             </p>
             <input
               ref={inputRef}

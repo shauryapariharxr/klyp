@@ -11,7 +11,7 @@ export default function ExpiredPage() {
           This transfer has expired
         </h1>
         <p className="mt-3 text-sm text-slate-400">
-          Transfers are deleted automatically 30 minutes after they are created.
+          Transfers are deleted automatically 15 minutes after they are created.
           Ask the sender to share the files or text again.
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">

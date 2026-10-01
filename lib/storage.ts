@@ -7,7 +7,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { DOWNLOAD_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS } from "./limits";
+import { DOWNLOAD_URL_TTL_SECONDS, STORAGE_PREFIX, UPLOAD_URL_TTL_SECONDS } from "./limits";
 
 /**
  * Storage works with ANY S3-compatible provider. Default stack: Supabase
@@ -134,6 +134,40 @@ export async function deleteObjects(keys: string[]): Promise<void> {
       }),
     );
   }
+}
+
+/**
+ * Total bytes currently stored under the transfers prefix. Used by upload-plan
+ * admission control and /api/health. Cached briefly so bursty traffic does not
+ * list the bucket on every request — the object count stays naturally small
+ * because everything self-destructs within one transfer TTL.
+ */
+let usageCache: { at: number; bytes: number } | null = null;
+const USAGE_CACHE_MS = 30 * 1000;
+
+export async function getBucketUsageBytes(): Promise<number> {
+  if (usageCache && Date.now() - usageCache.at < USAGE_CACHE_MS) {
+    return usageCache.bytes;
+  }
+
+  const s3 = getS3();
+  let bytes = 0;
+  let token: string | undefined;
+  for (;;) {
+    const listed = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket(),
+        Prefix: `${STORAGE_PREFIX}/`,
+        ContinuationToken: token,
+      }),
+    );
+    bytes += (listed.Contents ?? []).reduce((sum, o) => sum + (o.Size ?? 0), 0);
+    if (!listed.IsTruncated) break;
+    token = listed.NextContinuationToken;
+  }
+
+  usageCache = { at: Date.now(), bytes };
+  return bytes;
 }
 
 /**

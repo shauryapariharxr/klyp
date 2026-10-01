@@ -36,7 +36,7 @@ export default function Home() {
         </div>
 
         <p className="mt-10 text-xs text-slate-500">
-          Up to 10 files · 100 MB total · PIN expires in 30 minutes
+          Up to 10 files · 50 MB total · PIN expires in 15 minutes
         </p>
       </div>
     </div>

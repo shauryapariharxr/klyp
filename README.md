@@ -7,7 +7,7 @@
   <a href="#security">Security</a>
 </p>
 
-**Klyp** is anonymous, login-free file & text transfer. Send files or text, get a **4-digit PIN**, share it — the receiver enters the PIN to open the transfer. Everything self-destructs after **30 minutes**.
+**Klyp** is anonymous, login-free file & text transfer. Send files or text, get a **4-digit PIN**, share it — the receiver enters the PIN to open the transfer. Everything self-destructs after **15 minutes**.
 
 ```
 Send  →  Get PIN  →  Share PIN  →  Receive  →  Download  →  Gone
@@ -16,7 +16,7 @@ Send  →  Get PIN  →  Share PIN  →  Receive  →  Download  →  Gone
 ## Features
 
 - **No accounts, no emails** — nothing to sign up for, on either side
-- **Files or text** — up to 10 files (50 MB each, 100 MB total) or a 10,000-character note
+- **Files or text** — up to 10 files (25 MB each, 50 MB total) or a 10,000-character note
 - **Browser-direct uploads** — file bytes go straight to object storage via presigned PUT URLs; they never pass through the server
 - **4-digit PIN handoff** — the receiver types the PIN; a scoped access token unlocks the transfer
 - **30-minute expiry** — enforced on every access, swept automatically
@@ -65,7 +65,7 @@ Copy `.env.example` to `.env.local`:
 ### Sending
 
 1. Pick up to 10 files or paste text.
-2. `POST /api/transfer/create` stores the transfer, a peppered scrypt **hash** of the PIN (never the PIN), and an expiry 30 minutes out.
+2. `POST /api/transfer/create` stores the transfer, a peppered scrypt **hash** of the PIN (never the PIN), and an expiry 15 minutes out.
 3. Files upload **directly from the browser to the bucket** using presigned PUT URLs from `POST /api/transfer/:id/upload` — this sidesteps serverless request-body limits.
 4. `POST /api/transfer/:id/complete` verifies every object exists in the bucket, saves file metadata, and marks the transfer ready.
 

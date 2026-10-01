@@ -53,7 +53,7 @@ export default async function TransferPage({
           </h1>
           <p className="mt-3 text-sm text-slate-400">
             {expired
-              ? "Transfers are deleted automatically 30 minutes after they are created."
+              ? "Transfers are deleted automatically 15 minutes after they are created."
               : stillUploading
                 ? "The sender is still uploading the files. Try again shortly."
                 : serverError

@@ -1,12 +1,20 @@
-export const TRANSFER_TTL_MS = 30 * 60 * 1000;
+export const TRANSFER_TTL_MS = 15 * 60 * 1000;
 export const MAX_FILES = 10;
-export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
-export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+export const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_TEXT_LENGTH = 10_000;
 export const PIN_LENGTH = 4;
 export const DOWNLOAD_URL_TTL_SECONDS = 600;
 export const UPLOAD_URL_TTL_SECONDS = 900;
 export const STORAGE_PREFIX = "transfers";
+/**
+ * Soft cap on total bytes stored in the bucket (sized for the ~1 GB free-tier
+ * quota). Upload-plan admission control rejects transfers that would push
+ * usage past this, so a burst degrades gracefully instead of exhausting the
+ * provider quota and failing randomly. Usage naturally decays: everything
+ * expires within TRANSFER_TTL_MS.
+ */
+export const STORAGE_BUDGET_BYTES = 800 * 1024 * 1024;
 
 export function sanitizeFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";

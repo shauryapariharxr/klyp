@@ -3,9 +3,15 @@ import { z } from "zod";
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { transfers } from "@/db/schema";
-import { getUploadUrl, isStorageConfigured } from "@/lib/storage";
+import { getBucketUsageBytes, getUploadUrl, isStorageConfigured } from "@/lib/storage";
 import { tokensMatch } from "@/lib/token";
-import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES, STORAGE_PREFIX } from "@/lib/limits";
+import {
+  MAX_FILES,
+  MAX_FILE_BYTES,
+  MAX_TOTAL_BYTES,
+  STORAGE_BUDGET_BYTES,
+  STORAGE_PREFIX,
+} from "@/lib/limits";
 import { sanitizeFileName } from "@/lib/limits";
 import { isUuid, jsonError, getClientIp } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
@@ -52,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const totalSize = parsed.data.files.reduce((sum, f) => sum + f.fileSize, 0);
   if (totalSize > MAX_TOTAL_BYTES) {
-    return jsonError("Total size exceeds the 100 MB limit.", 413);
+    return jsonError("Total size exceeds the 50 MB limit.", 413);
   }
 
   const db = getDb();
@@ -68,6 +74,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (!isStorageConfigured()) {
     return jsonError("File uploads are unavailable: storage is not configured.", 503);
+  }
+
+  // Admission control: keep total bucket usage under the storage budget so a
+  // burst can't exhaust the provider quota and start failing randomly. Fails
+  // open (allows the upload) if usage can't be measured — storage being down
+  // will surface on the PUT itself anyway.
+  try {
+    const usageBytes = await getBucketUsageBytes();
+    if (usageBytes + totalSize > STORAGE_BUDGET_BYTES) {
+      return jsonError(
+        "Our storage is momentarily full. Transfers free up automatically every few minutes — please try again shortly.",
+        503,
+      );
+    }
+  } catch (error) {
+    console.error("[upload] storage usage check failed; allowing upload", error);
   }
 
   const uploadUrls = await Promise.all(

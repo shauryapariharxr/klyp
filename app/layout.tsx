@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     template: "%s · Klyp",
   },
   description:
-    "Anonymous, login-free file and text sharing. Upload, get a 4-digit PIN, share it — the receiver enters the PIN to download. Everything expires in 30 minutes.",
+    "Anonymous, login-free file and text sharing. Upload, get a 4-digit PIN, share it — the receiver enters the PIN to download. Everything expires in 15 minutes.",
 };
 
 /**
@@ -106,7 +106,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             shauryapariharxr
           </a>
           <span className="mx-2 text-slate-600">·</span>
-          No accounts. Transfers self-destruct after 30 minutes.
+          No accounts. Transfers self-destruct after 15 minutes.
         </footer>
       </body>
     </html>
