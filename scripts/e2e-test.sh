@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end smoke test for klyp against live Supabase + iDrive e2.
+# End-to-end smoke test for klyp against live Supabase DB + Supabase Storage.
 # Usage: bash scripts/e2e-test.sh [BASE_URL]   (default http://localhost:3123)
 BASE="${1:-http://localhost:3123}"
 J="content-type: application/json"
@@ -29,7 +29,7 @@ WRONG=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/transfer/verif
 [ "$WRONG" = "404" ] && pass "wrong PIN rejected (404)" || fail "wrong PIN returned $WRONG"
 
 echo ""
-echo "=========== FILE FLOW (iDrive e2) ==========="
+echo "=========== FILE FLOW (Supabase Storage) ==========="
 echo "klyp e2e file content $(date)" > /tmp/klyp-e2e-upload.txt
 
 CREATE2=$(curl -s -X POST "$BASE/api/transfer/create" -H "$J" -d '{"hasFiles":true}')

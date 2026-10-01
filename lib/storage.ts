@@ -10,12 +10,18 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DOWNLOAD_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS } from "./limits";
 
 /**
- * Storage works with ANY S3-compatible provider:
- *   Backblaze B2 (10 GB free, no card), Filebase (5 GB), Scaleway (75 GB),
- *   iDrive e2 (10 GB), Cloudflare R2, AWS S3, Minio, etc.
+ * Storage works with ANY S3-compatible provider. Default stack: Supabase
+ * Storage (same project as the database):
+ *   endpoint  https://<project-ref>.storage.supabase.co/storage/v1/s3
+ *   keys      Dashboard -> Storage -> Settings -> "Generate S3 access key"
+ *   NOTE: keep S3_FORCE_PATH_STYLE=1 — only path-style URLs get CORS headers
+ *   from Supabase, and the browser uploads via presigned PUT URLs.
+ *
+ * Other providers also work: Backblaze B2 (10 GB free, no card), Filebase (5 GB),
+ * Scaleway (75 GB), iDrive e2 (10 GB), Cloudflare R2, AWS S3, Minio, etc.
  *
  * Configure with either set of vars (checked in this order):
- *   S3_ENDPOINT          – full endpoint URL, e.g. https://s3.us-west-004.backblazeb2.com
+ *   S3_ENDPOINT          – full endpoint URL
  *   S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY / S3_BUCKET
  *
  * Or the original Cloudflare-style vars (still supported):
@@ -57,8 +63,8 @@ function getS3(): S3Client {
   if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) {
     throw new Error(
       "Object storage is not configured. Set S3_ENDPOINT, S3_ACCESS_KEY_ID, " +
-        "S3_SECRET_ACCESS_KEY and S3_BUCKET (see README — Backblaze B2 offers " +
-        "10 GB free with no credit card).",
+        "S3_SECRET_ACCESS_KEY and S3_BUCKET (see .env.example — Supabase Storage " +
+        "or Backblaze B2 both work free)."
     );
   }
 

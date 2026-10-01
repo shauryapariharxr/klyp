@@ -8,6 +8,10 @@
  * through the app (access token + PIN), and presigned URLs expire in minutes.
  *
  * Usage: node scripts/set-cors.js
+ *
+ * NOTE: Supabase Storage needs no CORS setup (its gateway already allows
+ * browser uploads on path-style URLs); this script is for other S3 providers
+ * such as Backblaze B2 or iDrive e2.
  */
 import fs from "node:fs";
 import {

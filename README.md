@@ -29,7 +29,7 @@ Send  →  Get PIN  →  Share PIN  →  Receive  →  Download  →  Gone
 | Framework | [Next.js 16](https://nextjs.org) (App Router) + TypeScript |
 | UI | Tailwind CSS 4, glassmorphism on a parallax starfield |
 | Database | PostgreSQL ([Supabase](https://supabase.com)) via [Drizzle ORM](https://orm.drizzle.team) |
-| Storage | Any S3-compatible provider (developed on iDrive e2; B2/R2/Filebase/Scaleway all work) |
+| Storage | Supabase Storage via its S3 gateway (any S3-compatible provider works: B2/R2/iDrive e2/Scaleway) |
 | Hosting | Vercel |
 
 ## Quick start
@@ -58,7 +58,7 @@ Copy `.env.example` to `.env.local`:
 | `PIN_HASH_PEPPER` | yes (prod) | Server-side secret mixed into PIN hashes — generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `CRON_SECRET` | optional | Bearer secret for `/api/cleanup` |
 
-**Free storage in 3 minutes:** create a private [Backblaze B2](https://www.backblaze.com/sign-up/cloud-storage) bucket (10 GB + 1 GB/day egress free, no card), add an Application Key scoped to it, and point `S3_ENDPOINT` at `https://s3.<region>.backblazeb2.com`. Text-only transfers need no storage at all.
+**Free storage in 2 minutes (default: Supabase Storage):** in your Supabase dashboard, Storage → New bucket → name it `klyp` and keep it **private**; then Storage → Settings → S3 connection info → copy the endpoint (`https://<project-ref>.storage.supabase.co/storage/v1/s3`) and region, click **Generate S3 access key**, and fill in `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_REGION`. Keep `S3_FORCE_PATH_STYLE=1`. Any other S3-compatible provider (Backblaze B2, iDrive e2, Scaleway…) works with the same variables. Text-only transfers need no storage at all.
 
 ## How it works
 

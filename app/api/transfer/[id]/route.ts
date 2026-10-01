@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { getTransferView } from "@/lib/transfers";
+import { scheduleExpirySweep } from "@/lib/cleanup";
 import { isDbConfigured } from "@/lib/db";
 import { isUuid, jsonError } from "@/lib/http";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  scheduleExpirySweep();
+
   const { id } = await params;
   if (!isUuid(id)) return jsonError("Invalid transfer id.", 400);
 

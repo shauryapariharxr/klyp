@@ -4,6 +4,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { files, transfers } from "@/db/schema";
 import { objectExists } from "@/lib/storage";
+import { scheduleExpirySweep } from "@/lib/cleanup";
 import { tokensMatch } from "@/lib/token";
 import { STORAGE_PREFIX } from "@/lib/limits";
 import { isUuid, jsonError } from "@/lib/http";
@@ -28,6 +29,8 @@ const COMPLETE_LIMIT = 20;
 const COMPLETE_WINDOW_MS = 60 * 60 * 1000;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  scheduleExpirySweep();
+
   const { id } = await params;
   if (!isUuid(id)) return jsonError("Invalid transfer id.", 400);
 

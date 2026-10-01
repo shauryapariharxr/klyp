@@ -3,6 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { files, transfers } from "@/db/schema";
 import { getDownloadUrl } from "@/lib/storage";
+import { scheduleExpirySweep } from "@/lib/cleanup";
 import { tokensMatch } from "@/lib/token";
 import { isUuid, jsonError } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
@@ -14,6 +15,8 @@ const DOWNLOAD_LIMIT = 60;
 const DOWNLOAD_WINDOW_MS = 10 * 60 * 1000;
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  scheduleExpirySweep();
+
   const { id } = await params;
   if (!isUuid(id)) return jsonError("Invalid file id.", 400);
 
