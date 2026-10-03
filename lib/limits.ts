@@ -16,6 +16,19 @@ export const STORAGE_PREFIX = "transfers";
  */
 export const STORAGE_BUDGET_BYTES = 800 * 1024 * 1024;
 
+// --- Local (same-Wi-Fi) peer-to-peer transfers ---
+export const LOCAL_DEVICE_NAME_MAX = 24;
+/** Cap on one signaling payload (SDP + file previews) — real ones are a few KB. */
+export const LOCAL_SIGNAL_MAX_BYTES = 64 * 1024;
+/** A device shows in the room while it heartbeats at least this often. */
+export const LOCAL_PEER_TTL_MS = 20 * 1000;
+/** Devices that stopped heartbeating are pruned after this long. */
+export const LOCAL_STALE_DEVICE_MS = 10 * 60 * 1000;
+/** Undelivered signals are pruned after this long (recipient left). */
+export const LOCAL_SIGNAL_TTL_MS = 5 * 60 * 1000;
+/** Client heartbeat cadence — every 2s refreshes presence and drains signals. */
+export const LOCAL_SYNC_INTERVAL_MS = 2 * 1000;
+
 export function sanitizeFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";
   const cleaned = base

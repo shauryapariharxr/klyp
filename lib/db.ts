@@ -15,8 +15,11 @@ export function isDbConfigured(): boolean {
  * complete-file metadata write).
  *
  * Works with any Postgres provider. For Supabase's transaction pooler
- * (port 6543), `prepare: false` is required. `max: 1` keeps connection
- * count minimal on serverless.
+ * (port 6543), `prepare: false` is required. `max` is kept small for
+ * serverless but > 1: concurrent endpoints (heartbeat polling, file
+ * metadata, health) must not serialize behind one connection — with ~700ms
+ * pooler round trips, a single connection saturates under even two
+ * concurrent pollers.
  */
 export function getDb() {
   if (cached) return cached;
@@ -28,6 +31,6 @@ export function getDb() {
     );
   }
 
-  cached = drizzle(postgres(connectionString, { prepare: false, max: 1 }), { schema });
+  cached = drizzle(postgres(connectionString, { prepare: false, max: 3 }), { schema });
   return cached;
 }

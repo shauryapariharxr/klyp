@@ -83,6 +83,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   Send
                 </Link>
                 <Link
+                  href="/local"
+                  className="glass rounded-full px-3.5 py-1.5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white sm:px-4"
+                >
+                  Local
+                </Link>
+                <Link
                   href="/receive"
                   className="glass rounded-full px-3.5 py-1.5 text-slate-300 transition-colors hover:bg-white/10 hover:text-white sm:px-4"
                 >
