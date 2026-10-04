@@ -11,7 +11,8 @@ import {
   rateLimit,
   recordPinFailure,
 } from "@/lib/rate-limit";
-import { getClientIp, jsonError } from "@/lib/http";
+import { getClientIp, jsonError, readJson } from "@/lib/http";
+import { TINY_BODY_MAX_BYTES } from "@/lib/limits";
 import { scheduleExpirySweep } from "@/lib/cleanup";
 
 export const runtime = "nodejs";
@@ -35,14 +36,12 @@ export async function POST(req: Request) {
     return jsonError("Service unavailable: the database is not configured.", 503);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const body = await readJson(req, TINY_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
   }
 
-  const parsed = verifySchema.safeParse(body);
+  const parsed = verifySchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError(parsed.error.issues[0]?.message ?? "Invalid PIN.", 400);
   }

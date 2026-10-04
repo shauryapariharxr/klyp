@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isDbConfigured } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { getClientIp, jsonError } from "@/lib/http";
-import { LOCAL_DEVICE_NAME_MAX } from "@/lib/limits";
+import { getClientIp, jsonError, readJson } from "@/lib/http";
+import { LOCAL_DEVICE_NAME_MAX, TINY_BODY_MAX_BYTES } from "@/lib/limits";
 import { pruneStaleLocalRows, registerDevice, roomKeyForRequest } from "@/lib/local";
 
 export const runtime = "nodejs";
@@ -26,14 +26,12 @@ export async function POST(req: Request) {
     return jsonError("Too many join attempts. Try again shortly.", 429);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const body = await readJson(req, TINY_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
   }
 
-  const parsed = joinSchema.safeParse(body);
+  const parsed = joinSchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError(
       `Provide a device name of up to ${LOCAL_DEVICE_NAME_MAX} characters.`,

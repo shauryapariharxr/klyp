@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
-import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { localDevices, localSignals, type LocalDevice } from "@/db/schema";
 import { generateToken } from "./token";
 import { getClientIp } from "./http";
-import { LOCAL_PEER_TTL_MS } from "./limits";
+import {
+  LOCAL_DRAIN_MAX,
+  LOCAL_MAX_PENDING_SIGNALS_PER_PEER,
+  LOCAL_PEER_TTL_MS,
+} from "./limits";
 
 /** Device rows stay valid for this long even if the client never prunes. */
 const DEVICE_STALE_MS = 10 * 60 * 1000;
@@ -104,13 +108,56 @@ export async function listPeers(
 
 export type EnqueuedSignal = { seq: number };
 
-/** Queue a signaling message for a specific device (SDP offers/answers). */
+/** Signaling was rejected for a caller-fixable reason (wrong room, backlog). */
+export class LocalSignalError extends Error {
+  constructor(
+    message: string,
+    readonly status: 404 | 429,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Queue a signaling message for a specific device (SDP offers/answers).
+ *
+ * Two guard rails keep signaling unspoofable and bounded:
+ * - the recipient must exist AND live in the sender's room (same hashed
+ *   public IP), so a remote client cannot inject messages into another
+ *   network's room even if it learns a device UUID;
+ * - each recipient accepts a bounded backlog, so one chatty peer cannot
+ *   balloon the signals table or the recipient's next poll response.
+ */
 export async function enqueueSignal(
+  senderRoom: string,
   fromDeviceId: string,
   toDeviceId: string,
   payload: unknown,
 ): Promise<EnqueuedSignal> {
   const db = getDb();
+
+  const [recipient] = await db
+    .select({ id: localDevices.id })
+    .from(localDevices)
+    .where(and(eq(localDevices.id, toDeviceId), eq(localDevices.publicIpHash, senderRoom)))
+    .limit(1);
+  if (!recipient) {
+    // Same answer for "unknown device" and "device in another room" so the
+    // endpoint cannot be used to enumerate devices on other networks.
+    throw new LocalSignalError("The recipient is not in your room.", 404);
+  }
+
+  const [backlog] = await db
+    .select({ pending: count() })
+    .from(localSignals)
+    .where(eq(localSignals.toDeviceId, toDeviceId));
+  if (Number(backlog?.pending ?? 0) >= LOCAL_MAX_PENDING_SIGNALS_PER_PEER) {
+    throw new LocalSignalError(
+      "The other device has too many pending signals. Try again shortly.",
+      429,
+    );
+  }
+
   const [row] = await db
     .insert(localSignals)
     .values({ fromDeviceId, toDeviceId, payload: payload as object })
@@ -119,19 +166,35 @@ export async function enqueueSignal(
 }
 
 /**
- * Drain and delete every signal addressed to a device newer than `afterSeq`
- * in ONE atomic DELETE … RETURNING. The message is consumed the moment it is
- * read — concurrent polls can never double-deliver, and no second round trip
- * for deletion is needed (each pooler round trip costs ~700 ms).
+ * Drain and delete the oldest signals addressed to a device newer than
+ * `afterSeq` in ONE atomic DELETE … RETURNING. The message is consumed the
+ * moment it is read — concurrent polls can never double-deliver, and no
+ * second round trip for deletion is needed (each pooler round trip costs
+ * ~700 ms). The per-drain cap bounds a single poll's response size; the
+ * cursor advances so the next poll picks up the rest.
  */
 export async function drainSignals(
   deviceId: string,
   afterSeq: number,
 ): Promise<{ signals: { seq: number; from: string; payload: unknown }[]; cursor: number }> {
   const db = getDb();
+  const scope = and(eq(localSignals.toDeviceId, deviceId), gt(localSignals.seq, afterSeq));
   const rows: { seq: number; fromDeviceId: string; payload: unknown }[] = await db
     .delete(localSignals)
-    .where(and(eq(localSignals.toDeviceId, deviceId), gt(localSignals.seq, afterSeq)))
+    .where(
+      and(
+        scope,
+        inArray(
+          localSignals.seq,
+          db
+            .select({ seq: localSignals.seq })
+            .from(localSignals)
+            .where(scope)
+            .orderBy(localSignals.seq)
+            .limit(LOCAL_DRAIN_MAX),
+        ),
+      ),
+    )
     .returning({
       seq: localSignals.seq,
       fromDeviceId: localSignals.fromDeviceId,

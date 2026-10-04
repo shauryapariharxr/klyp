@@ -159,14 +159,7 @@ export default function LocalPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
         <div className="w-full max-w-md">
-          <div className="relative mx-auto h-20 w-20" aria-hidden>
-            <div className="radar-ring" />
-            <div className="radar-ring" style={{ animationDelay: "-1.4s" }} />
-            <div className="radar-sweep" />
-            <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
-          </div>
-
-          <h1 className="font-display mt-6 text-center text-3xl font-extrabold tracking-tight sm:text-4xl">
+          <h1 className="font-display text-center text-3xl font-extrabold tracking-tight sm:text-4xl">
             klyp Local.
             <br />
             <span className="accent-text">Same Wi-Fi, zero cloud.</span>

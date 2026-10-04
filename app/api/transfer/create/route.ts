@@ -4,9 +4,9 @@ import { getDb, isDbConfigured } from "@/lib/db";
 import { transfers } from "@/db/schema";
 import { generatePin, hashPin } from "@/lib/pin";
 import { generateToken } from "@/lib/token";
-import { MAX_TEXT_LENGTH, TRANSFER_TTL_MS } from "@/lib/limits";
+import { JSON_BODY_MAX_BYTES, MAX_TEXT_LENGTH, TRANSFER_TTL_MS } from "@/lib/limits";
 import { rateLimit } from "@/lib/rate-limit";
-import { getClientIp, jsonError } from "@/lib/http";
+import { getClientIp, jsonError, readJson } from "@/lib/http";
 import { isStorageConfigured } from "@/lib/storage";
 import { scheduleExpirySweep } from "@/lib/cleanup";
 
@@ -32,14 +32,12 @@ export async function POST(req: Request) {
     return jsonError("Too many transfers created. Try again later.", 429);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const body = await readJson(req, JSON_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
   }
 
-  const parsed = createSchema.safeParse(body);
+  const parsed = createSchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError(parsed.error.issues[0]?.message ?? "Invalid request.", 400);
   }

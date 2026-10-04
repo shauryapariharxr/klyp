@@ -12,8 +12,8 @@ import {
   STORAGE_BUDGET_BYTES,
   STORAGE_PREFIX,
 } from "@/lib/limits";
-import { sanitizeFileName } from "@/lib/limits";
-import { isUuid, jsonError, getClientIp } from "@/lib/http";
+import { sanitizeFileName, JSON_BODY_MAX_BYTES } from "@/lib/limits";
+import { isUuid, jsonError, getClientIp, readJson } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -44,14 +44,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return jsonError("Too many upload requests. Try again later.", 429);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const body = await readJson(req, JSON_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
   }
 
-  const parsed = uploadSchema.safeParse(body);
+  const parsed = uploadSchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError(parsed.error.issues[0]?.message ?? "Invalid request.", 400);
   }

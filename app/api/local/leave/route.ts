@@ -3,7 +3,9 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { getDb, isDbConfigured } from "@/lib/db";
 import { localDevices } from "@/db/schema";
-import { jsonError } from "@/lib/http";
+import { getClientIp, jsonError, readJson } from "@/lib/http";
+import { rateLimit } from "@/lib/rate-limit";
+import { TINY_BODY_MAX_BYTES } from "@/lib/limits";
 import { authenticateDevice } from "@/lib/local";
 
 export const runtime = "nodejs";
@@ -14,6 +16,9 @@ const leaveSchema = z.object({
   deviceToken: z.string().min(1).max(128),
 });
 
+const LEAVE_LIMIT = 60;
+const LEAVE_WINDOW_MS = 60 * 1000;
+
 /**
  * Explicit departure (pagehide). The device row is deleted so it disappears
  * from every peer's list immediately; queued signals for it cascade-delete.
@@ -23,14 +28,17 @@ export async function POST(req: Request) {
     return jsonError("Service unavailable: the database is not configured.", 503);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const ip = getClientIp(req);
+  if (!rateLimit(`local-leave:${ip}`, LEAVE_LIMIT, LEAVE_WINDOW_MS).allowed) {
+    return jsonError("Too many requests. Try again shortly.", 429);
   }
 
-  const parsed = leaveSchema.safeParse(body);
+  const body = await readJson(req, TINY_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
+  }
+
+  const parsed = leaveSchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError("Invalid leave request.", 400);
   }

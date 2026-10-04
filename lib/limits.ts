@@ -28,6 +28,18 @@ export const LOCAL_STALE_DEVICE_MS = 10 * 60 * 1000;
 export const LOCAL_SIGNAL_TTL_MS = 5 * 60 * 1000;
 /** Client heartbeat cadence — every 2s refreshes presence and drains signals. */
 export const LOCAL_SYNC_INTERVAL_MS = 2 * 1000;
+/** Signals queued for one recipient before further sends are rejected (429). */
+export const LOCAL_MAX_PENDING_SIGNALS_PER_PEER = 100;
+/** Max signals returned per sync drain — bounds one poll response. */
+export const LOCAL_DRAIN_MAX = 50;
+
+// --- Request body caps (route handlers have no built-in body limit) ---
+/** JSON bodies for metadata-only endpoints (join/sync/leave/verify). */
+export const TINY_BODY_MAX_BYTES = 4 * 1024;
+/** JSON bodies that carry up to 10 file descriptors. */
+export const JSON_BODY_MAX_BYTES = 32 * 1024;
+/** Signal envelope: ≤64KB payload plus ids/envelope slack. */
+export const LOCAL_SIGNAL_BODY_MAX_BYTES = 128 * 1024;
 
 export function sanitizeFileName(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? "";

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isDbConfigured } from "@/lib/db";
-import { jsonError } from "@/lib/http";
-import { LOCAL_PEER_TTL_MS } from "@/lib/limits";
+import { getClientIp, jsonError, readJson } from "@/lib/http";
+import { rateLimit } from "@/lib/rate-limit";
+import { LOCAL_PEER_TTL_MS, TINY_BODY_MAX_BYTES } from "@/lib/limits";
 import {
   authenticateDevice,
   drainSignals,
@@ -19,6 +20,11 @@ const syncSchema = z.object({
   afterSeq: z.number().int().min(0),
 });
 
+// Legit clients heartbeat every 2s (~30/min); several tabs on one IP share
+// the limit, so it is generous but still bounds per-instance DB load.
+const SYNC_LIMIT = 300;
+const SYNC_WINDOW_MS = 60 * 1000;
+
 /**
  * The polling heartbeat. One round-trip per tick does everything: proves the
  * device is alive, returns the live peer list for the room, and drains any
@@ -29,14 +35,17 @@ export async function POST(req: Request) {
     return jsonError("Service unavailable: the database is not configured.", 503);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const ip = getClientIp(req);
+  if (!rateLimit(`local-sync:${ip}`, SYNC_LIMIT, SYNC_WINDOW_MS).allowed) {
+    return jsonError("Polling too fast. Try again shortly.", 429);
   }
 
-  const parsed = syncSchema.safeParse(body);
+  const body = await readJson(req, TINY_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
+  }
+
+  const parsed = syncSchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError("Invalid sync request.", 400);
   }

@@ -6,8 +6,8 @@ import { files, transfers } from "@/db/schema";
 import { objectExists } from "@/lib/storage";
 import { scheduleExpirySweep } from "@/lib/cleanup";
 import { tokensMatch } from "@/lib/token";
-import { STORAGE_PREFIX } from "@/lib/limits";
-import { isUuid, jsonError } from "@/lib/http";
+import { STORAGE_PREFIX, JSON_BODY_MAX_BYTES } from "@/lib/limits";
+import { isUuid, jsonError, readJson } from "@/lib/http";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/http";
 
@@ -39,14 +39,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return jsonError("Too many requests. Try again later.", 429);
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.", 400);
+  const body = await readJson(req, JSON_BODY_MAX_BYTES);
+  if (!body.ok) {
+    return jsonError(body.error, body.status);
   }
 
-  const parsed = completeSchema.safeParse(body);
+  const parsed = completeSchema.safeParse(body.data);
   if (!parsed.success) {
     return jsonError(parsed.error.issues[0]?.message ?? "Invalid request.", 400);
   }
