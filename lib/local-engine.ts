@@ -66,11 +66,19 @@ type SignalPayload =
   | { kind: "decline" }
   | { kind: "busy" };
 
-const CHUNK_SIZE = 16 * 1024;
-const BUFFER_HIGH = 512 * 1024;
-const BUFFER_LOW = 128 * 1024;
-/** Extra headroom the receiver grants so the last chunks always drain. */
-const BUFFER_DRAIN_HEADROOM_MS = 500;
+/**
+ * Throughput tuning. 64KB is the safe cross-browser SCTP message ceiling —
+ * the effective chunk shrinks to channel.maxMessageSize when a browser
+ * reports something smaller. The watermarks keep the wire full without
+ * overflowing the sender's buffer.
+ */
+const CHUNK_SIZE = 64 * 1024;
+const BUFFER_HIGH = 1024 * 1024;
+const BUFFER_LOW = 256 * 1024;
+/** Progress repaints at most this often — chunk events are far too frequent to render one-by-one. */
+const PROGRESS_PAINT_MS = 80;
+/** Short guard after the done frame so in-flight messages settle before close. */
+const POST_DONE_GUARD_MS = 100;
 /** How long a finished-transfer receipt stays on screen. */
 const RECEIPT_VISIBLE_MS = 6000;
 
@@ -96,7 +104,7 @@ export class LocalTransferEngine {
   private connections = new Map<string, RTCPeerConnection>();
   private incomingFiles = new Map<
     string,
-    { meta: LocalFileMeta; chunks: ArrayBuffer[]; received: number; startedAt: number }
+    { meta: LocalFileMeta; chunks: ArrayBuffer[]; received: number; startedAt: number; paintedAt: number }
   >();
   /** Peers with a send in flight (offer through completion). */
   private sendingPeers = new Set<string>();
@@ -353,7 +361,12 @@ export class LocalTransferEngine {
             peerName: payload.senderName,
             meta: payload.meta,
             accept: () => void this.answerOffer(from, payload.sdp, payload.meta),
-            decline: () => void this.sendSignal(from, { kind: "decline" }),
+            decline: () => {
+              // Dismiss the prompt right away — accept cleared it via
+              // answerOffer but decline didn't, so Decline read as broken.
+              this.setState({ incomingRequest: null });
+              void this.sendSignal(from, { kind: "decline" });
+            },
           },
         });
         break;
@@ -492,7 +505,7 @@ export class LocalTransferEngine {
     const pc = this.newConnection(from);
     pc.ondatachannel = (event) => {
       const channel = event.channel;
-      this.incomingFiles.set(from, { meta, chunks: [], received: 0, startedAt: Date.now() });
+      this.incomingFiles.set(from, { meta, chunks: [], received: 0, startedAt: Date.now(), paintedAt: 0 });
       this.setState({
         progress: {
           fileName: meta.fileName,
@@ -540,7 +553,16 @@ export class LocalTransferEngine {
       },
     });
 
+    // Respect browsers that report a smaller SCTP message ceiling.
+    const maxMessage = (channel as RTCDataChannel & { maxMessageSize?: number }).maxMessageSize;
+    const chunkSize = maxMessage && maxMessage > 0 ? Math.min(CHUNK_SIZE, maxMessage) : CHUNK_SIZE;
+
     let offset = 0;
+    let paintedAt = 0;
+    // One read-ahead slot: the next slice converts while the current chunk is
+    // on the wire, so Blob reads never serialize the pump.
+    let readAhead: { promise: Promise<ArrayBuffer>; start: number } | null = null;
+
     try {
       while (offset < file.size) {
         if (channel.readyState !== "open") throw new Error("Connection lost.");
@@ -550,37 +572,63 @@ export class LocalTransferEngine {
           continue;
         }
 
-        const slice = file.slice(offset, offset + CHUNK_SIZE);
-        const buffer = await slice.arrayBuffer();
+        let buffer: ArrayBuffer;
+        if (readAhead && readAhead.start === offset) {
+          buffer = await readAhead.promise;
+        } else {
+          buffer = await file.slice(offset, offset + chunkSize).arrayBuffer();
+        }
+        readAhead = null;
+
         channel.send(buffer);
         offset += buffer.byteLength;
 
-        this.setState({
-          progress: {
-            fileName: meta.fileName,
-            fileSize: meta.fileSize,
-            sentBytes: offset,
-            direction: "send",
-            startedAt,
-            peerName: this.peerName(peerId),
-          },
-        });
+        if (offset < file.size && channel.bufferedAmount <= BUFFER_HIGH) {
+          readAhead = { promise: file.slice(offset, offset + chunkSize).arrayBuffer(), start: offset };
+        }
+
+        // Chunk events are far more frequent than useful repaints.
+        const now = Date.now();
+        if (now - paintedAt >= PROGRESS_PAINT_MS) {
+          paintedAt = now;
+          this.setState({
+            progress: {
+              fileName: meta.fileName,
+              fileSize: meta.fileSize,
+              sentBytes: offset,
+              direction: "send",
+              startedAt,
+              peerName: this.peerName(peerId),
+            },
+          });
+        }
       }
+      // Force a final repaint so the bar reaches 100% before the receipt.
+      this.setState({
+        progress: {
+          fileName: meta.fileName,
+          fileSize: meta.fileSize,
+          sentBytes: offset,
+          direction: "send",
+          startedAt,
+          peerName: this.peerName(peerId),
+        },
+      });
     } catch (err) {
       this.event(err instanceof Error ? err.message : "Transfer failed.");
       this.cleanupPeer(peerId);
       return;
     }
 
-    // Signal completion with a JSON control frame, then close politely once
-    // the receiver acknowledges.
+    // Signal completion with a JSON control frame, then wait until every
+    // byte — and the done frame — has actually left this side before closing.
     try {
       channel.send(JSON.stringify({ done: true, fileId: meta.fileId }));
-      await this.waitForDrain(channel);
+      await this.waitForBufferEmpty(channel);
     } catch {
       // Receiver may have closed first.
     }
-    await new Promise((r) => setTimeout(r, BUFFER_DRAIN_HEADROOM_MS));
+    await new Promise((r) => setTimeout(r, POST_DONE_GUARD_MS));
     // Hand off to a receipt instead of leaving the bar parked at 100%. This
     // was the "glitch": the sender's progress state was never cleared.
     this.showReceipt({
@@ -613,6 +661,21 @@ export class LocalTransferEngine {
     });
   }
 
+  /** Resolve once the channel has flushed everything handed to it. */
+  private waitForBufferEmpty(channel: RTCDataChannel): Promise<void> {
+    return new Promise((resolve) => {
+      const check = () => {
+        if (channel.readyState !== "open" || channel.bufferedAmount === 0) {
+          resolve();
+          return;
+        }
+        channel.onbufferedamountlow = () => resolve();
+        setTimeout(check, 20);
+      };
+      check();
+    });
+  }
+
   private async onReceiveChunk(from: string, channel: RTCDataChannel, data: unknown): Promise<void> {
     const entry = this.incomingFiles.get(from);
     if (!entry) return;
@@ -632,16 +695,22 @@ export class LocalTransferEngine {
     const buffer = data as ArrayBuffer;
     entry.chunks.push(buffer);
     entry.received += buffer.byteLength;
-    this.setState({
-      progress: {
-        fileName: entry.meta.fileName,
-        fileSize: entry.meta.fileSize,
-        sentBytes: entry.received,
-        direction: "receive",
-        startedAt: entry.startedAt,
-        peerName: this.peerName(from),
-      },
-    });
+    // Throttled repaint — rendering per chunk starved the event loop and
+    // throttled the whole transfer.
+    const now = Date.now();
+    if (now - entry.paintedAt >= PROGRESS_PAINT_MS) {
+      entry.paintedAt = now;
+      this.setState({
+        progress: {
+          fileName: entry.meta.fileName,
+          fileSize: entry.meta.fileSize,
+          sentBytes: entry.received,
+          direction: "receive",
+          startedAt: entry.startedAt,
+          peerName: this.peerName(from),
+        },
+      });
+    }
   }
 
   private async finalizeIncoming(from: string): Promise<void> {
