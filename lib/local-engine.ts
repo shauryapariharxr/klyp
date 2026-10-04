@@ -33,6 +33,18 @@ export type TransferProgress = {
   fileSize: number;
   sentBytes: number;
   direction: "send" | "receive";
+  /** Wall-clock start, used to show a live rate instead of a frozen bar. */
+  startedAt: number;
+  /** Display name of the other end, when known. */
+  peerName: string | null;
+};
+
+/** Shown briefly after a transfer finishes, so the UI never dead-ends at 100%. */
+export type TransferReceipt = {
+  fileName: string;
+  fileSize: number;
+  direction: "send" | "receive";
+  peerName: string | null;
 };
 
 export type LocalEngineState = {
@@ -42,6 +54,8 @@ export type LocalEngineState = {
   peers: LocalPeer[];
   incomingRequest: IncomingRequest | null;
   progress: TransferProgress | null;
+  receipt: TransferReceipt | null;
+  refreshing: boolean;
   lastEvent: string | null;
 };
 
@@ -57,6 +71,8 @@ const BUFFER_HIGH = 512 * 1024;
 const BUFFER_LOW = 128 * 1024;
 /** Extra headroom the receiver grants so the last chunks always drain. */
 const BUFFER_DRAIN_HEADROOM_MS = 500;
+/** How long a finished-transfer receipt stays on screen. */
+const RECEIPT_VISIBLE_MS = 6000;
 
 function randomId(): string {
   return crypto.randomUUID();
@@ -80,7 +96,7 @@ export class LocalTransferEngine {
   private connections = new Map<string, RTCPeerConnection>();
   private incomingFiles = new Map<
     string,
-    { meta: LocalFileMeta; chunks: ArrayBuffer[]; received: number }
+    { meta: LocalFileMeta; chunks: ArrayBuffer[]; received: number; startedAt: number }
   >();
   /** Peers with a send in flight (offer through completion). */
   private sendingPeers = new Set<string>();
@@ -96,8 +112,11 @@ export class LocalTransferEngine {
     peers: [],
     incomingRequest: null,
     progress: null,
+    receipt: null,
+    refreshing: false,
     lastEvent: null,
   };
+  private receiptTimer: ReturnType<typeof setTimeout> | null = null;
 
   subscribe(listener: (state: LocalEngineState) => void): () => void {
     this.listeners.add(listener);
@@ -112,6 +131,41 @@ export class LocalTransferEngine {
 
   private event(message: string): void {
     this.setState({ lastEvent: message });
+  }
+
+/**
+ * Show a finished-transfer receipt for a few seconds. Without this the UI
+ * snapped from a full progress bar straight back to a small grey text line,
+ * which is what read as a glitch after sending a document. The receipt is a
+ * deliberate end state instead of an abrupt teardown.
+ */
+  private showReceipt(receipt: TransferReceipt): void {
+    if (this.receiptTimer) clearTimeout(this.receiptTimer);
+    this.setState({ progress: null, receipt });
+    this.receiptTimer = setTimeout(() => {
+      this.receiptTimer = null;
+      this.setState({ receipt: null });
+    }, RECEIPT_VISIBLE_MS);
+  }
+
+  /** Clear a finished-transfer receipt early (user dismissed it). */
+  dismissReceipt(): void {
+    if (this.receiptTimer) {
+      clearTimeout(this.receiptTimer);
+      this.receiptTimer = null;
+    }
+    this.setState({ receipt: null });
+  }
+
+  /** Manual presence refresh, for the button next to the device list. */
+  async refresh(): Promise<void> {
+    if (!this.deviceId) return;
+    this.setState({ refreshing: true });
+    try {
+      await this.syncOnce();
+    } finally {
+      this.setState({ refreshing: false });
+    }
   }
 
   // --- Room membership -----------------------------------------------------
@@ -202,12 +256,18 @@ export class LocalTransferEngine {
     this.selfName = null;
     this.peers = [];
     this.afterSeq = 0;
+    if (this.receiptTimer) {
+      clearTimeout(this.receiptTimer);
+      this.receiptTimer = null;
+    }
     this.setState({
       status: "offline",
       selfId: null,
       selfName: null,
       peers: [],
       progress: null,
+      receipt: null,
+      refreshing: false,
       incomingRequest: null,
     });
   }
@@ -432,13 +492,15 @@ export class LocalTransferEngine {
     const pc = this.newConnection(from);
     pc.ondatachannel = (event) => {
       const channel = event.channel;
-      this.incomingFiles.set(from, { meta, chunks: [], received: 0 });
+      this.incomingFiles.set(from, { meta, chunks: [], received: 0, startedAt: Date.now() });
       this.setState({
         progress: {
           fileName: meta.fileName,
           fileSize: meta.fileSize,
           sentBytes: 0,
           direction: "receive",
+          startedAt: Date.now(),
+          peerName: this.peerName(from),
         },
       });
       channel.onmessage = (msg) => void this.onReceiveChunk(from, channel, msg.data);
@@ -466,8 +528,16 @@ export class LocalTransferEngine {
     meta: LocalFileMeta,
   ): Promise<void> {
     this.pendingByPeer.set(peerId, { file, meta, pc: this.connections.get(peerId)!, channel });
+    const startedAt = Date.now();
     this.setState({
-      progress: { fileName: meta.fileName, fileSize: meta.fileSize, sentBytes: 0, direction: "send" },
+      progress: {
+        fileName: meta.fileName,
+        fileSize: meta.fileSize,
+        sentBytes: 0,
+        direction: "send",
+        startedAt,
+        peerName: this.peerName(peerId),
+      },
     });
 
     let offset = 0;
@@ -491,6 +561,8 @@ export class LocalTransferEngine {
             fileSize: meta.fileSize,
             sentBytes: offset,
             direction: "send",
+            startedAt,
+            peerName: this.peerName(peerId),
           },
         });
       }
@@ -509,8 +581,21 @@ export class LocalTransferEngine {
       // Receiver may have closed first.
     }
     await new Promise((r) => setTimeout(r, BUFFER_DRAIN_HEADROOM_MS));
+    // Hand off to a receipt instead of leaving the bar parked at 100%. This
+    // was the "glitch": the sender's progress state was never cleared.
+    this.showReceipt({
+      fileName: meta.fileName,
+      fileSize: meta.fileSize,
+      direction: "send",
+      peerName: this.peerName(peerId),
+    });
     this.event(`Sent “${meta.fileName}”.`);
     this.cleanupPeer(peerId);
+  }
+
+  /** Best-effort display name for a peer id, for receipts. */
+  private peerName(peerId: string): string | null {
+    return this.peers.find((p) => p.id === peerId)?.name ?? null;
   }
 
   private waitForDrain(channel: RTCDataChannel): Promise<void> {
@@ -553,6 +638,8 @@ export class LocalTransferEngine {
         fileSize: entry.meta.fileSize,
         sentBytes: entry.received,
         direction: "receive",
+        startedAt: entry.startedAt,
+        peerName: this.peerName(from),
       },
     });
   }
@@ -576,7 +663,12 @@ export class LocalTransferEngine {
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
 
     this.event(`Received “${entry.meta.fileName}”.`);
-    this.setState({ progress: null });
+    this.showReceipt({
+      fileName: entry.meta.fileName,
+      fileSize: entry.meta.fileSize,
+      direction: "receive",
+      peerName: this.peerName(from),
+    });
     this.cleanupPeer(from);
   }
 
