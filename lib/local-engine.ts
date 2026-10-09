@@ -23,7 +23,7 @@ export type LocalFileMeta = {
 export type IncomingRequest = {
   peerId: string;
   peerName: string;
-  meta: LocalFileMeta;
+  files: LocalFileMeta[];
   accept: () => void;
   decline: () => void;
 };
@@ -37,6 +37,11 @@ export type TransferProgress = {
   startedAt: number;
   /** Display name of the other end, when known. */
   peerName: string | null;
+  /** Owning peer — lets the UI cancel exactly this transfer. */
+  peerId: string | null;
+  /** 1-based position when several files travel in one transfer. */
+  fileIndex?: number;
+  fileCount?: number;
 };
 
 /** Shown briefly after a transfer finishes, so the UI never dead-ends at 100%. */
@@ -53,14 +58,17 @@ export type LocalEngineState = {
   selfName: string | null;
   peers: LocalPeer[];
   incomingRequest: IncomingRequest | null;
-  progress: TransferProgress | null;
+  /** One entry per in-flight transfer (several can run at once after a fan-out). */
+  progresses: TransferProgress[];
+  /** Peers with a send awaiting acceptance or mid-transfer, for UI highlighting. */
+  activeSendPeers: string[];
   receipt: TransferReceipt | null;
   refreshing: boolean;
   lastEvent: string | null;
 };
 
 type SignalPayload =
-  | { kind: "offer"; sdp: RTCSessionDescriptionInit; meta: LocalFileMeta; senderName: string }
+  | { kind: "offer"; sdp: RTCSessionDescriptionInit; meta: LocalFileMeta[]; senderName: string }
   | { kind: "answer"; sdp: RTCSessionDescriptionInit }
   | { kind: "accept" }
   | { kind: "decline" }
@@ -99,18 +107,32 @@ export class LocalTransferEngine {
   // One pending send per target peer; receiving is independent of sending.
   private pendingByPeer = new Map<
     string,
-    { file: File; meta: LocalFileMeta; pc: RTCPeerConnection; channel: RTCDataChannel }
+    { files: File[]; metas: LocalFileMeta[]; pc: RTCPeerConnection; channel: RTCDataChannel }
   >();
   private connections = new Map<string, RTCPeerConnection>();
   private incomingFiles = new Map<
     string,
-    { meta: LocalFileMeta; chunks: ArrayBuffer[]; received: number; startedAt: number; paintedAt: number }
+    {
+      files: LocalFileMeta[];
+      index: number;
+      chunks: ArrayBuffer[];
+      received: number;
+      startedAt: number;
+      paintedAt: number;
+    }
   >();
   /** Peers with a send in flight (offer through completion). */
   private sendingPeers = new Set<string>();
   /** Give up on a peer that never answers the offer (closed tab, Wi-Fi drop). */
   private offerTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private iceQueueByPeer = new Map<string, RTCIceCandidateInit[]>();
+
+  /** Live per-peer transfer cards (send and receive), keyed by peer id. */
+  private progressByPeer = new Map<string, TransferProgress>();
+  /** Resolvers so batched sends can wait until a peer's transfer finishes. */
+  private completionByPeer = new Map<string, () => void>();
+  /** Peers whose in-flight send the user asked to cancel. */
+  private canceledPeers = new Set<string>();
 
   private listeners = new Set<(state: LocalEngineState) => void>();
   private state: LocalEngineState = {
@@ -119,7 +141,8 @@ export class LocalTransferEngine {
     selfName: null,
     peers: [],
     incomingRequest: null,
-    progress: null,
+    progresses: [],
+    activeSendPeers: [],
     receipt: null,
     refreshing: false,
     lastEvent: null,
@@ -149,11 +172,30 @@ export class LocalTransferEngine {
  */
   private showReceipt(receipt: TransferReceipt): void {
     if (this.receiptTimer) clearTimeout(this.receiptTimer);
-    this.setState({ progress: null, receipt });
+    // Drop the card for the peer whose transfer just finished.
+    const finishedPeerId = receipt.peerName
+      ? [...this.progressByPeer.entries()].find(
+          ([, p]) => p.peerName === receipt.peerName,
+        )?.[0] ?? null
+      : null;
+    if (finishedPeerId) this.setPeerProgress(finishedPeerId, null);
+    this.dropActiveFinished();
+    this.setState({ receipt });
     this.receiptTimer = setTimeout(() => {
       this.receiptTimer = null;
       this.setState({ receipt: null });
     }, RECEIPT_VISIBLE_MS);
+  }
+
+  /** After a transfer settles, only that peer's card should go away. */
+  private dropActiveFinished(): void {
+    const gone = [...this.progressByPeer.keys()].filter(
+      (id) =>
+        !this.sendingPeers.has(id) &&
+        !this.incomingFiles.has(id) &&
+        !this.state?.incomingRequest,
+    );
+    for (const id of gone) this.setPeerProgress(id, null);
   }
 
   /** Clear a finished-transfer receipt early (user dismissed it). */
@@ -163,6 +205,19 @@ export class LocalTransferEngine {
       this.receiptTimer = null;
     }
     this.setState({ receipt: null });
+  }
+
+  /** Keep progressByPeer and the broadcast list in sync, then push. */
+  private setPeerProgress(peerId: string | null, next?: TransferProgress | null): void {
+    if (peerId === null) return;
+    if (!next || next.peerId === null) this.progressByPeer.delete(peerId);
+    else this.progressByPeer.set(peerId, next);
+    this.setState({ progresses: [...this.progressByPeer.values()] });
+  }
+
+  /** Peers with an offer pending or bytes in flight — the UI highlights these. */
+  private broadcastActiveSends(): void {
+    this.setState({ activeSendPeers: [...this.sendingPeers] });
   }
 
   /** Manual presence refresh, for the button next to the device list. */
@@ -262,18 +317,13 @@ export class LocalTransferEngine {
     this.deviceId = null;
     this.deviceToken = null;
     this.selfName = null;
-    this.peers = [];
-    this.afterSeq = 0;
-    if (this.receiptTimer) {
-      clearTimeout(this.receiptTimer);
-      this.receiptTimer = null;
-    }
     this.setState({
       status: "offline",
       selfId: null,
       selfName: null,
       peers: [],
-      progress: null,
+      progresses: [],
+      activeSendPeers: [],
       receipt: null,
       refreshing: false,
       incomingRequest: null,
@@ -359,7 +409,7 @@ export class LocalTransferEngine {
           incomingRequest: {
             peerId: from,
             peerName: payload.senderName,
-            meta: payload.meta,
+            files: payload.meta,
             accept: () => void this.answerOffer(from, payload.sdp, payload.meta),
             decline: () => {
               // Dismiss the prompt right away — accept cleared it via
@@ -418,22 +468,25 @@ export class LocalTransferEngine {
     return pc;
   }
 
-  /** Entry point for the sender: request consent, then connect. */
-  async sendTo(peerId: string, file: File): Promise<void> {
+  /** Entry point for the sender: request consent, then connect. Accepts
+   *  several files — they queue and travel one by one over one connection. */
+  async sendTo(peerId: string, firstFile: File, moreFiles?: File[]): Promise<void> {
     if (!this.deviceId) throw new Error("Join the room first.");
+    const files = [firstFile, ...(moreFiles ?? [])];
     if (this.sendingPeers.has(peerId)) throw new Error("Already sending to this device.");
     this.sendingPeers.add(peerId);
+    this.broadcastActiveSends();
 
-    const meta: LocalFileMeta = {
+    const metas = files.map((file) => ({
       fileId: randomId(),
       fileName: file.name,
       fileSize: file.size,
       mimeType: file.type || "application/octet-stream",
-    };
+    }));
 
     const pc = this.newConnection(peerId);
     const channel = pc.createDataChannel("klyp", { ordered: true });
-    this.wireSendChannel(peerId, channel, file, meta);
+    this.wireSendChannel(peerId, channel, files, metas);
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -443,10 +496,14 @@ export class LocalTransferEngine {
     await this.sendSignal(peerId, {
       kind: "offer",
       sdp: { type: pc.localDescription!.type, sdp: pc.localDescription!.sdp },
-      meta,
+      meta: metas,
       senderName: this.selfName ?? "A device",
     });
-    this.event(`Waiting for the other device to accept “${file.name}”…`);
+    this.event(
+      files.length > 1
+        ? `Waiting for the other device to accept ${files.length} files…`
+        : `Waiting for the other device to accept “${files[0].name}”…`,
+    );
     this.armOfferTimeout(peerId);
   }
 
@@ -455,8 +512,9 @@ export class LocalTransferEngine {
     this.offerTimeouts.set(
       peerId,
       setTimeout(() => {
-        if (this.sendingPeers.has(peerId)) {
+        if (this.sendingPeers.has(peerId) && !this.canceledPeers.has(peerId)) {
           this.cleanupPeer(peerId);
+          this.setPeerProgress(peerId, null);
           this.event("No response from the other device.");
         }
       }, 30_000),
@@ -491,33 +549,29 @@ export class LocalTransferEngine {
   private wireSendChannel(
     peerId: string,
     channel: RTCDataChannel,
-    file: File,
-    meta: LocalFileMeta,
+    files: File[],
+    metas: LocalFileMeta[],
   ): void {
     channel.onopen = () => {
-      void this.pumpFile(peerId, channel, file, meta);
+      void this.pumpFile(peerId, channel, files, metas);
     };
     channel.onerror = () => this.cleanupPeer(peerId);
   }
 
-  private async answerOffer(from: string, sdp: RTCSessionDescriptionInit, meta: LocalFileMeta): Promise<void> {
+  private async answerOffer(from: string, sdp: RTCSessionDescriptionInit, metas: LocalFileMeta[]): Promise<void> {
     this.setState({ incomingRequest: null });
     const pc = this.newConnection(from);
     pc.ondatachannel = (event) => {
       const channel = event.channel;
-      this.incomingFiles.set(from, { meta, chunks: [], received: 0, startedAt: Date.now(), paintedAt: 0 });
-      this.setState({
-        progress: {
-          fileName: meta.fileName,
-          fileSize: meta.fileSize,
-          sentBytes: 0,
-          direction: "receive",
-          startedAt: Date.now(),
-          peerName: this.peerName(from),
-        },
-      });
+      const startedAt = Date.now();
+      this.incomingFiles.set(from, { files: metas, index: 0, chunks: [], received: 0, startedAt, paintedAt: 0 });
+      this.paintIncoming(from, startedAt);
       channel.onmessage = (msg) => void this.onReceiveChunk(from, channel, msg.data);
-      channel.onclose = () => this.finalizeIncoming(from);
+      // A clean close means the done frame already tore the transfer down and
+      // this entry is gone. If the entry still exists here the channel died
+      // mid-file (sender canceled, tab closed) — the bytes are truncated news,
+      // so they are discarded instead of saved as if complete.
+      channel.onclose = () => this.onIncomingChannelClose(from);
       channel.onerror = () => this.cleanupPeer(from);
     };
 
@@ -531,114 +585,151 @@ export class LocalTransferEngine {
       kind: "answer",
       sdp: { type: pc.localDescription!.type, sdp: pc.localDescription!.sdp },
     });
-    this.event(`Connecting to receive “${meta.fileName}”…`);
+    this.event(
+      metas.length > 1
+        ? `Connecting to receive ${metas.length} files…`
+        : `Connecting to receive “${metas[0].fileName}”…`,
+    );
   }
 
+  /**
+   * Pump one peer's file queue over its open channel, in order, repainting a
+   * per-peer progress card. Cancellation is cooperative: cancelSend marks the
+   * peer and closes the channel, which surfaces here as "Connection lost." —
+   * but a cancel must never log "Transfer failed.", so the caught error is
+   * swallowed when the peer is already marked canceled.
+   */
   private async pumpFile(
     peerId: string,
     channel: RTCDataChannel,
-    file: File,
-    meta: LocalFileMeta,
+    files: File[],
+    metas: LocalFileMeta[],
   ): Promise<void> {
-    this.pendingByPeer.set(peerId, { file, meta, pc: this.connections.get(peerId)!, channel });
+    this.pendingByPeer.set(peerId, { files, metas, pc: this.connections.get(peerId)!, channel });
     const startedAt = Date.now();
-    this.setState({
-      progress: {
-        fileName: meta.fileName,
-        fileSize: meta.fileSize,
-        sentBytes: 0,
+    const totalCount = files.length;
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    // One progress card per peer covering the whole queue.
+    let sentBytes = 0;
+
+    const repaint = (bytes: number): void => {
+      sentBytes = bytes;
+      const idx = this.fileIndexOfOffset(files, sentBytes);
+      this.setPeerProgress(peerId, {
+        fileName: totalCount > 1 ? `${idx + 1}/${totalCount} · ${files[idx]?.name ?? ""}` : files[0]?.name ?? "",
+        fileSize: totalBytes,
+        sentBytes,
         direction: "send",
         startedAt,
         peerName: this.peerName(peerId),
-      },
-    });
+        peerId,
+        fileIndex: idx + 1,
+        fileCount: totalCount,
+      });
+    };
+
+    repaint(0);
 
     // Respect browsers that report a smaller SCTP message ceiling.
     const maxMessage = (channel as RTCDataChannel & { maxMessageSize?: number }).maxMessageSize;
     const chunkSize = maxMessage && maxMessage > 0 ? Math.min(CHUNK_SIZE, maxMessage) : CHUNK_SIZE;
 
-    let offset = 0;
     let paintedAt = 0;
     // One read-ahead slot: the next slice converts while the current chunk is
     // on the wire, so Blob reads never serialize the pump.
     let readAhead: { promise: Promise<ArrayBuffer>; start: number } | null = null;
 
     try {
-      while (offset < file.size) {
-        if (channel.readyState !== "open") throw new Error("Connection lost.");
+      let offset = 0;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const meta = metas[i];
+        offset = 0;
 
-        if (channel.bufferedAmount > BUFFER_HIGH) {
-          await this.waitForDrain(channel);
-          continue;
+        while (offset < file.size) {
+          if (channel.readyState !== "open") throw new Error("Connection lost.");
+
+          if (channel.bufferedAmount > BUFFER_HIGH) {
+            await this.waitForDrain(channel);
+            continue;
+          }
+
+          let buffer: ArrayBuffer;
+          if (readAhead && readAhead.start === offset) {
+            buffer = await readAhead.promise;
+          } else {
+            buffer = await file.slice(offset, offset + chunkSize).arrayBuffer();
+          }
+          readAhead = null;
+
+          channel.send(buffer);
+          offset += buffer.byteLength;
+
+          if (offset < file.size && channel.bufferedAmount <= BUFFER_HIGH) {
+            readAhead = { promise: file.slice(offset, offset + chunkSize).arrayBuffer(), start: offset };
+          }
+
+          // Chunk events are far more frequent than useful repaints.
+          const now = Date.now();
+          if (now - paintedAt >= PROGRESS_PAINT_MS) {
+            paintedAt = now;
+            repaint(this.bytesUpTo(files, i, offset));
+          }
         }
+        // Force a final repaint so the bar reaches 100% before the receipt.
+        repaint(this.bytesUpTo(files, i, file.size));
 
-        let buffer: ArrayBuffer;
-        if (readAhead && readAhead.start === offset) {
-          buffer = await readAhead.promise;
-        } else {
-          buffer = await file.slice(offset, offset + chunkSize).arrayBuffer();
-        }
-        readAhead = null;
-
-        channel.send(buffer);
-        offset += buffer.byteLength;
-
-        if (offset < file.size && channel.bufferedAmount <= BUFFER_HIGH) {
-          readAhead = { promise: file.slice(offset, offset + chunkSize).arrayBuffer(), start: offset };
-        }
-
-        // Chunk events are far more frequent than useful repaints.
-        const now = Date.now();
-        if (now - paintedAt >= PROGRESS_PAINT_MS) {
-          paintedAt = now;
-          this.setState({
-            progress: {
-              fileName: meta.fileName,
-              fileSize: meta.fileSize,
-              sentBytes: offset,
-              direction: "send",
-              startedAt,
-              peerName: this.peerName(peerId),
-            },
-          });
+        // Signal completion of this file with a JSON control frame. `last`
+        // tells the receiver whether it may tear down after reassembling, or
+        // must keep the channel alive for the next file in the queue.
+        try {
+          channel.send(JSON.stringify({ done: true, fileId: meta.fileId, last: i === files.length - 1 }));
+        } catch {
+          // Receiver may have closed first; the outer engine will see it.
         }
       }
-      // Force a final repaint so the bar reaches 100% before the receipt.
-      this.setState({
-        progress: {
-          fileName: meta.fileName,
-          fileSize: meta.fileSize,
-          sentBytes: offset,
-          direction: "send",
-          startedAt,
-          peerName: this.peerName(peerId),
-        },
-      });
+
+      await this.waitForBufferEmpty(channel);
     } catch (err) {
+      if (this.canceledPeers.has(peerId)) return;
       this.event(err instanceof Error ? err.message : "Transfer failed.");
       this.cleanupPeer(peerId);
-      return;
     }
 
-    // Signal completion with a JSON control frame, then wait until every
-    // byte — and the done frame — has actually left this side before closing.
-    try {
-      channel.send(JSON.stringify({ done: true, fileId: meta.fileId }));
-      await this.waitForBufferEmpty(channel);
-    } catch {
-      // Receiver may have closed first.
-    }
     await new Promise((r) => setTimeout(r, POST_DONE_GUARD_MS));
-    // Hand off to a receipt instead of leaving the bar parked at 100%. This
-    // was the "glitch": the sender's progress state was never cleared.
+    this.event(
+      totalCount > 1 ? `Sent ${totalCount} files.` : `Sent “${metas[0].fileName}”.`,
+    );
     this.showReceipt({
-      fileName: meta.fileName,
-      fileSize: meta.fileSize,
+      fileName:
+        totalCount > 1 ? `${totalCount} files` : metas[0].fileName,
+      fileSize: totalBytes,
       direction: "send",
       peerName: this.peerName(peerId),
     });
-    this.event(`Sent “${meta.fileName}”.`);
     this.cleanupPeer(peerId);
+  }
+
+  /** Byte offset within the whole queue at the start of file `fileIndex`. */
+  private queueOffset(files: File[], fileIndex: number): number {
+    let sum = 0;
+    for (let i = 0; i < fileIndex; i++) sum += files[i].size;
+    return sum;
+  }
+
+  /** Queue-wide bytes sent once `fileIndex` has pushed `offset` bytes. */
+  private bytesUpTo(files: File[], fileIndex: number, offset: number): number {
+    return this.queueOffset(files, fileIndex) + offset;
+  }
+
+  /** Which file of the queue a queue-wide byte position falls in. */
+  private fileIndexOfOffset(files: File[], bytes: number): number {
+    let acc = 0;
+    for (let i = 0; i < files.length; i++) {
+      acc += files[i].size;
+      if (bytes < acc || (files[i].size === 0 && bytes === acc)) return i;
+    }
+    return files.length - 1;
   }
 
   /** Best-effort display name for a peer id, for receipts. */
@@ -682,9 +773,15 @@ export class LocalTransferEngine {
 
     if (typeof data === "string") {
       try {
-        const control = JSON.parse(data) as { done?: boolean };
+        const control = JSON.parse(data) as { done?: boolean; last?: boolean };
         if (control.done) {
-          await this.finalizeIncoming(from);
+          if (control.last !== false) {
+            await this.finalizeIncoming(from);
+          } else {
+            // One file of a multi-file batch finished; reassemble and save it,
+            // then keep the channel open for the rest of the queue.
+            await this.rotateIncomingFile(from);
+          }
         }
       } catch {
         // Ignore malformed control frames.
@@ -700,17 +797,101 @@ export class LocalTransferEngine {
     const now = Date.now();
     if (now - entry.paintedAt >= PROGRESS_PAINT_MS) {
       entry.paintedAt = now;
-      this.setState({
-        progress: {
-          fileName: entry.meta.fileName,
-          fileSize: entry.meta.fileSize,
-          sentBytes: entry.received,
-          direction: "receive",
-          startedAt: entry.startedAt,
-          peerName: this.peerName(from),
-        },
-      });
+      this.paintIncoming(from, entry.startedAt);
     }
+  }
+
+  /** Repaint this peer's receive card from its incomingFiles entry. */
+  private paintIncoming(from: string, startedAt: number): void {
+    const entry = this.incomingFiles.get(from);
+    if (!entry) return;
+    const files = entry.files;
+    const idx = entry.index;
+    const current = files[idx];
+    const totalBytes = files.reduce((sum, f) => sum + f.fileSize, 0);
+    const before = files.slice(0, idx).reduce((sum, f) => sum + f.fileSize, 0);
+    this.setPeerProgress(from, {
+      fileName:
+        files.length > 1 ? `${idx + 1}/${files.length} · ${current.fileName}` : current.fileName,
+      fileSize: totalBytes,
+      sentBytes: before + Math.min(entry.received, current.fileSize),
+      direction: "receive",
+      startedAt,
+      peerName: this.peerName(from),
+      peerId: from,
+      fileIndex: idx + 1,
+      fileCount: files.length,
+    });
+  }
+
+  /**
+   * A file of a multi-file batch just finished: turn its chunks into a Blob,
+   * trigger the download prompt, and advance to the next file in the queue.
+   */
+  private async rotateIncomingFile(from: string): Promise<void> {
+    const entry = this.incomingFiles.get(from);
+    if (!entry) return;
+    const finished = entry.files[entry.index];
+    const blob = new Blob(entry.chunks, { type: finished.mimeType });
+    this.saveBlob(blob, finished.fileName);
+    entry.chunks = [];
+    entry.received = 0;
+    entry.index += 1;
+
+    if (entry.index < entry.files.length) {
+      this.event(
+        entry.files.length > 1
+          ? `Received ${entry.index}/${entry.files.length} files from ${this.peerName(from) ?? "device"}…`
+          : `Received “${finished.fileName}”.`,
+      );
+      this.paintIncoming(from, entry.startedAt);
+      return;
+    }
+
+    this.incomingFiles.delete(from);
+    this.event(`Received ${entry.files.length > 1 ? `all ${entry.files.length} files` : `“${finished.fileName}”`}.`);
+    this.showReceipt({
+      fileName: entry.files.length > 1 ? `${entry.files.length} files` : finished.fileName,
+      fileSize: entry.files.reduce((sum, f) => sum + f.fileSize, 0),
+      direction: "receive",
+      peerName: this.peerName(from),
+    });
+    this.cleanupPeer(from);
+  }
+
+  /** Reassemble received chunks, prompt a download, and expose the test hook. */
+  private saveBlob(blob: Blob, fileName: string): void {
+    const url = URL.createObjectURL(blob);
+    // Debug/test hook — lets automated checks verify the received bytes.
+    const hook = (window as unknown as { __klypLocal?: { lastFileUrl: string | null } }).__klypLocal;
+    if (hook) hook.lastFileUrl = url;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
+  /**
+   * Channel closed while an incoming entry still existed: the sender went
+   * away mid-file, so nothing complete arrived. Surface the partial-transfer
+   * event and tear the peer down WITHOUT saving truncated bytes.
+   */
+  private onIncomingChannelClose(from: string): void {
+    const entry = this.incomingFiles.get(from);
+    this.incomingFiles.delete(from);
+    const name = this.peerName(from) ?? "device";
+    if (entry && entry.received > 0) {
+      const idx = entry.index + 1;
+      this.event(
+        entry.files.length > 1
+          ? `Transfer interrupted — ${idx}/${entry.files.length} files incomplete from ${name}.`
+          : `Transfer interrupted — “${entry.files[0].fileName}” did not arrive.`,
+      );
+    }
+    this.cleanupPeer(from);
   }
 
   private async finalizeIncoming(from: string): Promise<void> {
@@ -718,23 +899,16 @@ export class LocalTransferEngine {
     if (!entry) return;
     this.incomingFiles.delete(from);
 
-    const blob = new Blob(entry.chunks, { type: entry.meta.mimeType });
-    const url = URL.createObjectURL(blob);
-    // Debug/test hook — lets automated checks verify the received bytes.
-    const hook = (window as unknown as { __klypLocal?: { lastFileUrl: string | null } }).__klypLocal;
-    if (hook) hook.lastFileUrl = url;
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = entry.meta.fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    // For a multi-file queue, rotations (done with last:false) already
+    // advanced entry.index — so files[entry.index] is the file that just
+    // finished, not files[0].
+    const meta = entry.files[entry.index] ?? entry.files[0];
+    this.saveBlob(new Blob(entry.chunks, { type: meta.mimeType }), meta.fileName);
 
-    this.event(`Received “${entry.meta.fileName}”.`);
+    this.event(`Received “${meta.fileName}”.`);
     this.showReceipt({
-      fileName: entry.meta.fileName,
-      fileSize: entry.meta.fileSize,
+      fileName: meta.fileName,
+      fileSize: meta.fileSize,
       direction: "receive",
       peerName: this.peerName(from),
     });
@@ -751,6 +925,64 @@ export class LocalTransferEngine {
     this.pendingByPeer.delete(peerId);
     this.sendingPeers.delete(peerId);
     this.iceQueueByPeer.delete(peerId);
+    this.canceledPeers.delete(peerId);
+    this.broadcastActiveSends();
+    const resolver = this.completionByPeer.get(peerId);
+    if (resolver) {
+      this.completionByPeer.delete(peerId);
+      resolver();
+    }
+  }
+
+  /** Public cancel for the X button on a send progress card (item 1). */
+  cancelSend(peerId: string): void {
+    this.canceledPeers.add(peerId);
+    const pc = this.connections.get(peerId);
+    if (pc) pc.close();
+    const channel = this.pendingByPeer.get(peerId)?.channel;
+    if (channel) channel.close();
+    const name = this.peerName(peerId) ?? "device";
+    this.cleanupPeer(peerId);
+    this.setPeerProgress(peerId, null);
+    this.event(`Transfer to ${name} canceled.`);
+  }
+
+  /**
+   * Fan one file set out to several peers, one at a time. Each peer gets its
+   * own consent prompt and its own connection — and peers that answer "busy"
+   * just fall through, so one busy device never blocks the others. Resolves
+   * when every peer's transfer (accept, decline, busy, failure or completion)
+   * has settled.
+   */
+  async sendToAll(peerIds: string[], file: File, moreFiles?: File[]): Promise<void> {
+    if (!this.deviceId) throw new Error("Join the room first.");
+    const targets = [...new Set(peerIds)].filter((id) => !this.sendingPeers.has(id));
+    if (targets.length === 0) throw new Error("Every device is already receiving a transfer.");
+
+    try {
+      for (const peerId of targets) {
+        if (this.canceledPeers.has(peerId)) continue;
+        const settled = new Promise<void>((resolve) => {
+          this.completionByPeer.set(peerId, resolve);
+        });
+        try {
+          await this.sendTo(peerId, file, moreFiles);
+        } catch {
+          // sendTo throws for a peer mid-send; cleanupPeer already ran, so the
+          // settled promise above may never resolve — bail out of the loop.
+          this.completionByPeer.delete(peerId);
+          continue;
+        }
+        // The resolver also fires on decline/busy/failure/cancel, so this
+        // await can never hang past the 30 s offer timeout.
+        const timeout = new Promise<void>((resolve) => setTimeout(resolve, 45_000));
+        await Promise.race([settled, timeout]);
+        this.completionByPeer.delete(peerId);
+      }
+    } finally {
+      this.completionByPeer.clear();
+      this.canceledPeers.clear();
+    }
   }
 
   private wireLeaveBeacon(): void {

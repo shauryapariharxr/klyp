@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatBytes } from "@/lib/format";
-import { localEngine, type LocalEngineState, type TransferProgress } from "@/lib/local-engine";
+import { localEngine, type LocalEngineState, type LocalPeer, type TransferProgress } from "@/lib/local-engine";
 import { LOCAL_DEVICE_NAME_MAX } from "@/lib/limits";
 
 /**
@@ -54,6 +54,18 @@ function suggestedName(): string {
   return `${adjective} ${os}`.slice(0, 24);
 }
 
+/** Stable pseudo-random position for a device's blip on the radar scope. */
+function blipTransform(id: string): { left: string; top: string } {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  const angle = (hash % 360) * (Math.PI / 180);
+  const radiusPct = 20 + ((hash >>> 9) % 15);
+  return {
+    left: `${50 + radiusPct * Math.cos(angle)}%`,
+    top: `${50 + radiusPct * Math.sin(angle)}%`,
+  };
+}
+
 export default function LocalPage() {
   const [state, setState] = useState<LocalEngineState | null>(null);
   const stateRef = useRef<LocalEngineState | null>(null);
@@ -61,11 +73,14 @@ export default function LocalPage() {
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** null = single-target picker │ "ONE:<peerId>" (one device) │ "ALL" (every device). */
   const sendTargetRef = useRef<string | null>(null);
   /** A file is being dragged over the card (desktop drag-and-drop send). */
   const [dragOver, setDragOver] = useState(false);
   /** Peer row currently hovered with a dragged file. */
   const [dropPeerId, setDropPeerId] = useState<string | null>(null);
+  /** Send whose offer is pending acceptance — gets a Cancel chip, no card. */
+  const [waitingPeer, setWaitingPeer] = useState<string | null>(null);
   /** Ticking clock so transfer rate/ETA stay live between chunk events. */
   const [now, setNow] = useState(0);
   const dragDepth = useRef(0);
@@ -83,6 +98,10 @@ export default function LocalPage() {
     const unsubscribe = localEngine.subscribe((next) => {
       stateRef.current = next;
       setState(next);
+      // A settled transfer card for the pending peer also retires the chip.
+      setWaitingPeer((cur) =>
+        cur && next.progresses.some((p) => p.peerId === cur) ? cur : null,
+      );
     });
     // Try to silently resume a previous session (e.g. after reload).
     void localEngine.resume();
@@ -112,7 +131,7 @@ export default function LocalPage() {
 
   // Rate and ETA need a clock tick between chunk events to stay honest. The
   // first tick lands 500ms in; until then the rate reads as an em dash.
-  const hasProgress = state?.progress != null;
+  const hasProgress = (state?.progresses?.length ?? 0) > 0;
   useEffect(() => {
     if (!hasProgress) return;
     const timer = setInterval(() => setNow(Date.now()), 500);
@@ -131,26 +150,65 @@ export default function LocalPage() {
     }
   }, [name]);
 
-  const openPickerFor = useCallback((peerId: string) => {
-    sendTargetRef.current = peerId;
+  const openPickerFor = useCallback((peerId: string | null) => {
+    sendTargetRef.current = peerId === null ? "ALL" : `ONE:${peerId}`;
     fileInputRef.current?.click();
   }, []);
 
-  const sendFile = useCallback((peerId: string, file: File) => {
-    void localEngine.sendTo(peerId, file).catch((err: unknown) =>
-      setError(err instanceof Error ? err.message : "Could not start the transfer."),
-    );
-  }, []);
+  const sendFilesToTarget = useCallback(
+    (target: string | null, files: File[]) => {
+      if (!target || files.length === 0) return;
+      const current = stateRef.current;
+      if (!current) return;
+      if (target === "ALL") {
+        // Sequential fan-out: show the waiting chip for the first target.
+        setWaitingPeer(current.peers[0]?.id ?? null);
+        void localEngine
+          .sendToAll(current.peers.map((p) => p.id), files[0], files.slice(1))
+          .catch((err: unknown) =>
+            setError(err instanceof Error ? err.message : "Could not start the transfer."),
+          );
+        return;
+      }
+      const peerId = target.startsWith("ONE:") ? target.slice(4) : null;
+      if (!peerId) return;
+      setWaitingPeer(peerId);
+      void localEngine
+        .sendTo(peerId, files[0], files.slice(1))
+        .catch((err: unknown) =>
+          setError(err instanceof Error ? err.message : "Could not start the transfer."),
+        );
+    },
+    [],
+  );
+
+  const sendFile = useCallback(
+    (peerId: string, file: File, more?: File[]) => {
+      setWaitingPeer(peerId);
+      void localEngine
+        .sendTo(peerId, file, more)
+        .catch((err: unknown) =>
+          setError(err instanceof Error ? err.message : "Could not start the transfer."),
+        );
+    },
+    [],
+  );
 
   const onFilePicked = useCallback(
     (list: FileList | null) => {
-      const peerId = sendTargetRef.current;
-      const file = list?.[0];
-      if (!peerId || !file) return;
+      const target = sendTargetRef.current;
       sendTargetRef.current = null;
-      sendFile(peerId, file);
+      const files: File[] = [];
+      if (list) {
+        for (let i = 0; i < list.length && files.length < 10; i++) {
+          const picked = list.item(i);
+          if (picked) files.push(picked);
+        }
+      }
+      if (!target || files.length === 0) return;
+      sendFilesToTarget(target, files);
     },
-    [sendFile],
+    [sendFilesToTarget],
   );
 
   if (state === null) return null;
@@ -165,8 +223,8 @@ export default function LocalPage() {
             <span className="accent-text">Same Wi-Fi, zero cloud.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-sm text-center text-sm text-slate-400">
-            Devices on the same Wi-Fi see each other here. Pick one, choose a file, and it travels
-            straight between the two devices — nothing is uploaded anywhere.
+            Devices on the same Wi-Fi see each other here. Pick one or more, choose files, and they
+            travel straight between the devices — nothing is uploaded anywhere.
           </p>
 
           <div className="glass-strong-tinted mt-10 rounded-3xl p-6 sm:p-8">
@@ -235,12 +293,87 @@ export default function LocalPage() {
   }
 
   const incoming = state.incomingRequest;
-  const progress = state.progress;
-  const pct =
-    progress && progress.fileSize > 0
-      ? Math.min(100, Math.round((progress.sentBytes / progress.fileSize) * 100))
-      : 0;
-  const eta = progress ? formatEta(progress) : null;
+  const progresses = state.progresses ?? [];
+  const busy = progresses.length > 0;
+  const etaOf = (p: TransferProgress) => formatEta(p);
+
+  /** Receivers stay clickable; only peers already in a transfer are locked. */
+  const sendDisabledFor = (peerId: string | "ALL"): boolean =>
+    incoming !== null ||
+    waitingPeer !== null ||
+    (peerId === "ALL"
+      ? // room-wide fan-out cannot touch any busy receiver
+        state.peers.length === 0 || state.peers.length === progresses.length
+      : progresses.some((p) => p.peerId === peerId));
+
+  /** Renders one device blip row (list) with the connecting state. */
+  const renderPeerRow = (peer: LocalPeer) => {
+    const connecting =
+      (state.activeSendPeers ?? []).includes(peer.id) ||
+      progresses.some((p) => p.peerId === peer.id) ||
+      incoming?.peerId === peer.id;
+    return (
+      <li
+        key={peer.id}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDropPeerId(peer.id);
+        }}
+        onDragLeave={() => setDropPeerId((cur) => (cur === peer.id ? null : cur))}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dragDepth.current = 0;
+          setDragOver(false);
+          setDropPeerId(null);
+          const files = e.dataTransfer?.files;
+          if (!files || files.length === 0) return;
+          const list: File[] = [];
+          for (let i = 0; i < files.length && list.length < 10; i++) {
+            const picked = files.item(i);
+            if (picked) list.push(picked);
+          }
+          if (list.length > 0) sendFile(peer.id, list[0], list.slice(1));
+        }}
+        className={`glass flex items-center justify-between rounded-xl px-4 py-3 transition-all ${
+          dropPeerId === peer.id
+            ? "border border-cyan-300/70 bg-cyan-300/10 shadow-[0_0_36px_rgba(103,232,249,0.25)]"
+            : ""
+        } ${connecting ? "ring-1 ring-cyan-300/50" : ""}`}
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            {connecting ? (
+              <>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-70" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-300" />
+              </>
+            ) : (
+              <>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              </>
+            )}
+          </span>
+          <span className="min-w-0 truncate text-sm">{peer.name}</span>
+          {connecting && (
+            <span className="shrink-0 rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+              Connecting
+            </span>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={() => openPickerFor(peer.id)}
+          disabled={sendDisabledFor(peer.id)}
+          className="ml-4 shrink-0 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100 transition-colors hover:bg-white/20 disabled:opacity-40"
+        >
+          Send
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 py-16">
@@ -276,10 +409,15 @@ export default function LocalPage() {
             dragDepth.current = 0;
             setDragOver(false);
             setDropPeerId(null);
-            const file = e.dataTransfer?.files?.[0];
-            if (!file) return;
+            const files = e.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+            const list: File[] = [];
+            for (let i = 0; i < files.length && list.length < 10; i++) {
+              const picked = files.item(i);
+              if (picked) list.push(picked);
+            }
             const peer = state.peers.length === 1 ? state.peers[0] : null;
-            if (peer) sendFile(peer.id, file);
+            if (peer) sendFile(peer.id, list[0], list.slice(1));
             else if (state.peers.length > 1)
               setError("Drop the file onto a device to send it.");
           }}
@@ -328,49 +466,92 @@ export default function LocalPage() {
               </p>
             </div>
           ) : (
-            <ul className="space-y-2">
-              {state.peers.map((peer) => (
-                <li
-                  key={peer.id}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDropPeerId(peer.id);
-                  }}
-                  onDragLeave={() => setDropPeerId((cur) => (cur === peer.id ? null : cur))}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    dragDepth.current = 0;
-                    setDragOver(false);
-                    setDropPeerId(null);
-                    const file = e.dataTransfer?.files?.[0];
-                    if (file) sendFile(peer.id, file);
-                  }}
-                  className={`glass flex items-center justify-between rounded-xl px-4 py-3 transition-all ${
-                    dropPeerId === peer.id
-                      ? "border border-cyan-300/70 bg-cyan-300/10 shadow-[0_0_36px_rgba(103,232,249,0.25)]"
-                      : ""
-                  }`}
+            <>
+              {/* Radar scope: this device at the center, nearby devices as */}
+              {/* tappable blips whose position is stable per device id. */}
+              <div
+                className="relative mx-auto h-56 w-56 overflow-hidden rounded-full border border-white/10 bg-white/[0.03]"
+                aria-label="Nearby devices radar"
+              >
+                <div className="radar-ring" />
+                <div className="radar-ring" style={{ animationDelay: "-1.4s" }} />
+                <div className="radar-sweep" />
+                <span className="absolute left-1/2 top-1/2 flex h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.9)]" />
+                {/* crosshair */}
+                <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/5" />
+                <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/5" />
+
+                {state.peers.map((peer) => {
+                  const connecting =
+                    (state.activeSendPeers ?? []).includes(peer.id) ||
+                    progresses.some((p) => p.peerId === peer.id) ||
+                    incoming?.peerId === peer.id;
+                  const pos = blipTransform(peer.id);
+                  return (
+                    <button
+                      key={peer.id}
+                      type="button"
+                      onClick={() => openPickerFor(peer.id)}
+                      title={`Send to ${peer.name}`}
+                      disabled={sendDisabledFor(peer.id)}
+                      className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center focus:outline-none disabled:opacity-50"
+                      style={pos}
+                    >
+                      <span
+                        className={`relative flex h-3 w-3 items-center justify-center rounded-full transition-colors ${
+                          connecting ? "bg-amber-300" : "bg-emerald-400"
+                        }`}
+                      >
+                        <span
+                          className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
+                            connecting ? "bg-amber-300" : "bg-emerald-400"
+                          }`}
+                        />
+                      </span>
+                      <span
+                        className={`mt-1 max-w-[84px] truncate rounded-full px-1.5 text-[10px] font-medium transition-colors ${
+                          connecting
+                            ? "bg-amber-300/15 text-amber-200"
+                            : "bg-slate-950/60 text-slate-300 group-hover:text-cyan-200"
+                        }`}
+                      >
+                        {peer.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-center text-xs text-slate-500">
+                {state.peers.length === 1
+                  ? "1 device in range — tap a blip or a row below to send."
+                  : `${state.peers.length} devices in range — tap a blip or a row below to send.`}
+              </p>
+
+              <ul className="mt-4 space-y-2">{state.peers.map(renderPeerRow)}</ul>
+
+              {state.peers.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => openPickerFor(null)}
+                  disabled={sendDisabledFor("ALL")}
+                  className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-full bg-white/10 px-4 text-xs font-semibold text-slate-100 transition-colors hover:bg-white/20 disabled:opacity-40"
                 >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="relative flex h-2.5 w-2.5 shrink-0">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    </span>
-                    <span className="min-w-0 truncate text-sm">{peer.name}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => openPickerFor(peer.id)}
-                    disabled={progress !== null}
-                    className="ml-4 shrink-0 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100 transition-colors hover:bg-white/20 disabled:opacity-40"
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                    className="h-4 w-4 text-cyan-300"
                   >
-                    Send
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <path d="M12 19V5m0 0-6 6m6-6 6 6" />
+                  </svg>
+                  Send to all {state.peers.length} devices
+                </button>
+              )}
+            </>
           )}
 
           {dragOver && state.peers.length > 0 && (
@@ -381,61 +562,122 @@ export default function LocalPage() {
             </p>
           )}
 
-          {progress && (
-            <div className="rise-in mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="flex min-w-0 items-center gap-1.5 text-slate-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                    className={`h-3.5 w-3.5 shrink-0 ${
-                      progress.direction === "send" ? "text-violet-300" : "text-cyan-300"
-                    }`}
-                  >
-                    {progress.direction === "send" ? (
-                      <path d="M12 19V5m0 0-6 6m6-6 6 6" />
-                    ) : (
-                      <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
-                    )}
-                  </svg>
-                  <span className="truncate">
-                    {progress.direction === "send" ? "Sending to" : "Receiving from"}{" "}
-                    <span className="font-medium text-slate-200">{progress.peerName ?? "device"}</span>
+          {/* Offer awaiting acceptance: a chip with cancel, since the offer
+              phase has no progress card yet but still holds that peer. */}
+          {waitingPeer && !progresses.some((p) => p.peerId === waitingPeer) && (
+            <div className="rise-in mt-5 flex items-center justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] px-4 py-3">
+              <span className="flex min-w-0 items-center gap-2 text-xs text-amber-200">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-70" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-300" />
+                </span>
+                <span className="truncate">
+                  Waiting for
+                  <span className="font-medium text-amber-100">
+                    {state.peers.find((p) => p.id === waitingPeer)?.name ?? "device"}
                   </span>
+                  to accept…
                 </span>
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-cyan-300">
-                  {pct}%
-                </span>
-              </div>
-              <p className="mt-1.5 truncate text-xs text-slate-500">“{progress.fileName}”</p>
-
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="shimmer-bar relative h-full overflow-hidden rounded-full bg-gradient-to-r from-violet-400 via-indigo-400 to-cyan-300 shadow-[0_0_16px_rgba(165,180,252,0.55)] transition-[width] duration-200 ease-out"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-
-              <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-slate-500">
-                <span>
-                  {formatBytes(progress.sentBytes)} of {formatBytes(progress.fileSize)}
-                </span>
-                <span>
-                  {progress.sentBytes > 0 && now > progress.startedAt
-                    ? formatRate(progress.sentBytes, now - progress.startedAt)
-                    : "—"}
-                  {eta ? ` · ${eta}` : ""}
-                </span>
-              </div>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (waitingPeer) localEngine.cancelSend(waitingPeer);
+                  setWaitingPeer(null);
+                }}
+                className="shrink-0 rounded-full border border-amber-300/30 px-3 py-1 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-300/10"
+              >
+                Cancel
+              </button>
             </div>
           )}
 
-          {state.receipt && !progress && (
+          {progresses.map((p) => {
+            const pPct =
+              p.fileSize > 0 ? Math.min(100, Math.round((p.sentBytes / p.fileSize) * 100)) : 0;
+            return (
+              <div key={p.peerId ?? p.fileName} className="rise-in mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="flex min-w-0 items-center gap-1.5 text-slate-400">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        p.direction === "send" ? "text-violet-300" : "text-cyan-300"
+                      }`}
+                    >
+                      {p.direction === "send" ? (
+                        <path d="M12 19V5m0 0-6 6m6-6 6 6" />
+                      ) : (
+                        <path d="M12 5v14m0 0 6-6m-6 6-6-6" />
+                      )}
+                    </svg>
+                    <span className="truncate">
+                      {p.direction === "send" ? "Sending to" : "Receiving from"}{" "}
+                      <span className="font-medium text-slate-200">{p.peerName ?? "device"}</span>
+                      {p.fileCount && p.fileCount > 1
+                        ? ` · file ${p.fileIndex}/${p.fileCount}`
+                        : ""}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-sm font-semibold tabular-nums text-cyan-300">
+                      {pPct}%
+                    </span>
+                    {p.direction === "send" && p.peerId && (
+                      <button
+                        type="button"
+                        onClick={() => localEngine.cancelSend(p.peerId!)}
+                        aria-label="Cancel transfer"
+                        className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-white/10 hover:text-red-300"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                          className="h-3.5 w-3.5"
+                        >
+                          <path d="M18 6 6 18" />
+                          <path d="m6 6 12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <p className="mt-1.5 truncate text-xs text-slate-500">“{p.fileName}”</p>
+
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="shimmer-bar relative h-full overflow-hidden rounded-full bg-gradient-to-r from-violet-400 via-indigo-400 to-cyan-300 shadow-[0_0_16px_rgba(165,180,252,0.55)] transition-[width] duration-200 ease-out"
+                    style={{ width: `${pPct}%` }}
+                  />
+                </div>
+
+                <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-slate-500">
+                  <span>
+                    {formatBytes(p.sentBytes)} of {formatBytes(p.fileSize)}
+                  </span>
+                  <span>
+                    {p.sentBytes > 0 && now > p.startedAt
+                      ? formatRate(p.sentBytes, now - p.startedAt)
+                      : "—"}
+                    {etaOf(p) ? ` · ${etaOf(p)}` : ""}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {state.receipt && !busy && (
             <div className="rise-in mt-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-3">
               <span className="flex min-w-0 items-center gap-3">
                 <span className="check-pop flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400/15">
@@ -492,7 +734,7 @@ export default function LocalPage() {
             </div>
           )}
 
-          {state.lastEvent && !progress && !state.receipt && (
+          {state.lastEvent && !busy && !state.receipt && (
             <p className="mt-5 text-center text-xs text-slate-400">{state.lastEvent}</p>
           )}
 
@@ -517,10 +759,12 @@ export default function LocalPage() {
         </p>
       </div>
 
-      {/* Hidden picker: clicking a peer's Send button routes the chosen file to it. */}
+      {/* Hidden picker: multiple files allowed; routing depends on which Send */}
+      {/* button opened it (one device or "send to all"). */}
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         className="hidden"
         onChange={(e) => {
           onFilePicked(e.target.files);
@@ -553,10 +797,27 @@ export default function LocalPage() {
             <p className="mt-3 text-sm font-semibold">
               {incoming.peerName} wants to send you
             </p>
-            <p className="mt-1 truncate text-sm text-slate-300">
-              “{incoming.meta.fileName}”{" "}
-              <span className="text-slate-500">({formatBytes(incoming.meta.fileSize)})</span>
-            </p>
+            {incoming.files.length === 1 ? (
+              <p className="mt-1 truncate text-sm text-slate-300">
+                “{incoming.files[0].fileName}”{" "}
+                <span className="text-slate-500">({formatBytes(incoming.files[0].fileSize)})</span>
+              </p>
+            ) : (
+              <div className="mt-1.5 text-sm text-slate-300">
+                <span className="font-semibold text-slate-100">
+                  {incoming.files.length} files
+                </span>
+                <span className="text-slate-500">
+                  {" "}({formatBytes(
+                    incoming.files.reduce((sum, f) => sum + f.fileSize, 0),
+                  )}{" "}
+                  total)
+                </span>
+                <span className="mt-1 block truncate text-xs text-slate-500">
+                  {incoming.files.map((f) => f.fileName).join(", ")}
+                </span>
+              </div>
+            )}
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
                 type="button"
