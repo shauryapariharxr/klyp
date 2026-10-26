@@ -12,7 +12,7 @@
  * Bump VERSION whenever public/ icon or manifest content changes so clients
  * drop their stale asset cache.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const ASSET_CACHE = `klyp-static-${VERSION}`;
 const PAGE_CACHE = "klyp-pages";
 

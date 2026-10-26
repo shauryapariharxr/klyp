@@ -25,15 +25,15 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Klyp — share files & text with a 4-digit PIN",
-    template: "%s · Klyp",
+    default: "klyp",
+    template: "%s · klyp",
   },
   description:
     "Anonymous, login-free file and text sharing. Upload, get a 4-digit PIN, share it — the receiver enters the PIN to download. Everything expires in 15 minutes.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Klyp",
+    title: "klyp",
     statusBarStyle: "black-translucent",
   },
   icons: {

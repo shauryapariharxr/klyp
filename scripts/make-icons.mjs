@@ -19,31 +19,35 @@ const PUBLIC = path.join(process.cwd(), "public");
 const BACKDROP = "#020617"; // site backdrop — matches --background in globals.css
 
 const tiles = [
-  { file: "icon-192.png", size: 192, insetPct: 0, opaque: false },
-  { file: "icon-512.png", size: 512, insetPct: 0, opaque: false },
-  { file: "icon-512-maskable.png", size: 512, insetPct: 16, opaque: true },
-  { file: "apple-touch-icon.png", size: 180, insetPct: 8, opaque: true },
+  { file: "icon-192.png", size: 192, insetPct: 15, opaque: false },
+  { file: "icon-512.png", size: 512, insetPct: 15, opaque: false },
+  // Maskable: OS masks crop to a circle whose diameter is 80% of the tile,
+  // so a square glyph must stay at ~56% width to never get clipped. 25%
+  // inset → 50% art width, same visual weight as typical app-taskbar icons.
+  { file: "icon-512-maskable.png", size: 512, insetPct: 25, opaque: true },
+  { file: "apple-touch-icon.png", size: 180, insetPct: 10, opaque: true },
 ];
 
 for (const { file, size, insetPct, opaque } of tiles) {
-  // The K mark fills the whole 300×300 viewBox edge-to-edge; inset it by
-  // scaling the rendered art down and (for opaque tiles) centering it on a
-  // solid backdrop.
+  // The K mark viewBox fills edge-to-edge, so render it inset-scaled and
+  // center it on a full size×size tile — transparent for "any", the site
+  // backdrop for "maskable"/apple (iOS ignores alpha there).
   const art = Math.round(size * (1 - insetPct / 50));
   const artBuf = await sharp(path.join(PUBLIC, "logo.svg"))
     .resize(art, art)
     .png()
     .toBuffer();
 
-  if (opaque) {
-    await sharp({
-      create: { width: size, height: size, channels: 4, background: BACKDROP },
-    })
-      .composite([{ input: artBuf, gravity: "centre" }])
-      .png()
-      .toFile(path.join(PUBLIC, file));
-  } else {
-    await sharp(artBuf).png().toFile(path.join(PUBLIC, file));
-  }
+  await sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: opaque ? BACKDROP : { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: artBuf, gravity: "centre" }])
+    .png()
+    .toFile(path.join(PUBLIC, file));
   console.log(`wrote public/${file}`);
 }
