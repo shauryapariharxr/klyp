@@ -1,0 +1,4 @@
+<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- The klyp "K" mark, same geometry as app/components/Logo.tsx -->
+  <path fill="#f8fafc" d="M0 0H100V100Z M0 100H100V300H0Z M200 0H300V100H200Z M100 100H300L200 200Z M100 200H300V300H200Z" />
+</svg>

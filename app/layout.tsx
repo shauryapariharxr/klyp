@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Montserrat } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import Logo from "./components/Logo";
 import GitHubButton from "./components/GitHubButton";
+import RegisterSW from "./components/RegisterSW";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,20 @@ export const metadata: Metadata = {
   },
   description:
     "Anonymous, login-free file and text sharing. Upload, get a 4-digit PIN, share it — the receiver enters the PIN to download. Everything expires in 15 minutes.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Klyp",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+/** Matches manifest theme_color so the browser/installed chrome tints right. */
+export const viewport: Viewport = {
+  themeColor: "#020617",
 };
 
 /**
@@ -57,6 +72,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col font-sans text-slate-100">
         <SpaceBackdrop />
+        <RegisterSW />
         <header className="sticky top-0 z-20">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
             {/* Logo reads as one word: the K mark flowing into "lyp". The mark's
